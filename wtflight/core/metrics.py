@@ -1,17 +1,9 @@
-"""Telemetry fields, warnings and persistent overlay settings."""
+"""Telemetry field catalogue: names, units, help texts and value formatting."""
 
 from __future__ import annotations
 
-import json
 import math
-import os
 import re
-from pathlib import Path
-
-
-APP_DIR = Path(os.getenv("APPDATA") or Path.home()) / "WTFlightAssistant"
-CONFIG_PATH = APP_DIR / "settings.json"
-LEGACY_CONFIG_PATH = Path(__file__).with_name("wt_assistant_config.json")
 
 # id: (section, label, source, API key, format)
 METRICS = {
@@ -245,107 +237,3 @@ def available_metrics(state, indicators, limits=None):
             if key not in known_keys[source] and key not in ("valid", "type") and not key.startswith("_") and number(value) is not None:
                 ids.append(f"{source}:{key}")
     return ids
-
-
-def evaluate(ias, load, positive_limit, negative_limit, speed_limit, caution_ratio=.9):
-    if ias is None and load is None:
-        return "unset", "Нет данных IAS и перегрузки"
-    critical, caution = [], []
-    if load is not None and positive_limit is not None:
-        if load >= positive_limit:
-            critical.append("ПРЕДЕЛ +G")
-        elif load >= positive_limit * caution_ratio:
-            caution.append("Близко к пределу +G")
-    if load is not None and negative_limit is not None:
-        if load <= negative_limit:
-            critical.append("ПРЕДЕЛ −G")
-        elif load <= negative_limit * caution_ratio:
-            caution.append("Близко к пределу −G")
-    if ias is not None and speed_limit is not None:
-        if ias >= speed_limit:
-            critical.append("ПРЕДЕЛ IAS")
-        elif ias >= speed_limit * caution_ratio:
-            caution.append("Близко к пределу IAS")
-    if critical:
-        return "critical", " · ".join(critical)
-    if caution:
-        return "caution", " · ".join(caution)
-    if all(v is None for v in (positive_limit, negative_limit, speed_limit)):
-        return "unset", "Пределы не настроены"
-    return "normal", "В пределах заданных значений"
-
-
-def default_config():
-    return {
-        "version": 2,
-        "groups": [
-            {"id": "flight", "title": "ПОЛЁТ", "metrics": ["ias", "g", "altitude"], "x": 50, "y": 85,
-             "style": "text", "show_title": False, "show_labels": True, "font_size": 19,
-             "font_family": "Bahnschrift", "color": "#f1f5f9", "accent": "#55d6be"},
-            {"id": "energy", "title": "ЭНЕРГИЯ", "metrics": ["mach", "aoa", "fuel"], "x": 340, "y": 85,
-             "style": "text", "show_title": False, "show_labels": True, "font_size": 17,
-             "font_family": "Bahnschrift", "color": "#f1f5f9", "accent": "#55d6be"},
-            {"id": "alerts", "title": "ПРЕДУПРЕЖДЕНИЯ", "metrics": ["warning"], "x": 50, "y": 345,
-             "style": "text", "show_title": False, "show_labels": True, "font_size": 21,
-             "font_family": "Bahnschrift", "color": "#f1f5f9", "accent": "#55d6be"},
-        ],
-        "limits": {"positive_g": None, "negative_g": None, "ias_kmh": None},
-        "sound": True,
-        "font_size": 16,
-        "overlay_visible": True,
-    }
-
-
-def load_config():
-    config = default_config()
-    try:
-        source = CONFIG_PATH if CONFIG_PATH.exists() else LEGACY_CONFIG_PATH
-        saved = json.loads(source.read_text(encoding="utf-8"))
-        if not isinstance(saved, dict):
-            return config
-    except (OSError, ValueError):
-        return config
-    if isinstance(saved.get("groups"), list):
-        groups = []
-        for group in saved["groups"]:
-            if not isinstance(group, dict):
-                continue
-            metrics = [m for m in group.get("metrics", []) if m in METRICS]
-            if not metrics:
-                continue
-            style = group.get("style", "text")
-            color = group.get("color", "#f1f5f9")
-            accent = group.get("accent", "#55d6be")
-            groups.append({
-                "id": str(group.get("id", "group"))[:40],
-                "title": str(group.get("title", "ГРУППА"))[:35],
-                "metrics": metrics,
-                "x": int(number(group.get("x")) or 50),
-                "y": int(number(group.get("y")) or 85),
-                "style": style if style in ("text", "panel") else "text",
-                "show_title": bool(group.get("show_title", False)),
-                "show_labels": bool(group.get("show_labels", True)),
-                "font_size": min(36, max(10, int(number(group.get("font_size")) or 17))),
-                "font_family": group.get("font_family", "Bahnschrift") if group.get("font_family") in
-                    ("Bahnschrift", "Segoe UI", "Arial", "Consolas") else "Bahnschrift",
-                "color": color if isinstance(color, str) and len(color) == 7 and color.startswith("#") else "#f1f5f9",
-                "accent": accent if isinstance(accent, str) and len(accent) == 7 and accent.startswith("#") else "#55d6be",
-            })
-        config["groups"] = groups
-    limits = saved.get("limits", saved)
-    if isinstance(limits, dict):
-        for key in config["limits"]:
-            config["limits"][key] = number(limits.get(key))
-    config["sound"] = bool(saved.get("sound", True))
-    size = number(saved.get("font_size"))
-    if size is not None:
-        config["font_size"] = min(22, max(10, int(size)))
-    config["overlay_visible"] = bool(saved.get("overlay_visible", True))
-    return config
-
-
-def save_config(config):
-    APP_DIR.mkdir(parents=True, exist_ok=True)
-    temp = CONFIG_PATH.with_suffix(".tmp")
-    temp.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp.replace(CONFIG_PATH)

@@ -1,25 +1,30 @@
-"""Render actual UI theme comparisons with sample telemetry and temporary settings."""
+"""Render actual UI theme comparisons with sample telemetry and temporary settings.
+
+Run from the repository root: python tools/render_designs.py
+"""
 from pathlib import Path
+import sys
 import tempfile
 
-from PySide6.QtCore import QRect, Qt
+from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-import wt_qt
-from wt_themes import THEMES
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from wtflight.ui.main_window import MainWindow  # noqa: E402
+from wtflight.ui.theme import THEMES  # noqa: E402
 
 
 def main():
     app = QApplication.instance() or QApplication([])
     app.setQuitOnLastWindowClosed(False)
-    output = Path(__file__).parent / "design_previews"
+    output = ROOT / "docs" / "images"
     output.mkdir(exist_ok=True)
-    original = wt_qt.CONFIG_PATH
     with tempfile.TemporaryDirectory() as folder:
-        wt_qt.CONFIG_PATH = Path(folder) / "settings.json"
-        window = wt_qt.MainWindow(start_background_updates=False)
+        window = MainWindow(start_background_updates=False, settings_path=Path(folder) / "settings.json")
         window.telemetry.stop()
         QTest.qWait(30)
         window.set_demo_mode(True)
@@ -84,7 +89,6 @@ def main():
                 overlay.hide()
             window.deleteLater()
             QTest.qWait(20)
-            wt_qt.CONFIG_PATH = original
     print(output / "comparison.png")
 
 

@@ -1,4 +1,7 @@
-#define AppVersion "1.0.6"
+; build.ps1 passes /DAppVersion from wtflight/__init__.py; the fallback is for manual builds.
+#ifndef AppVersion
+  #define AppVersion "1.0.6"
+#endif
 
 [Setup]
 AppId={{D7F5651E-6A74-47CD-A931-A3C136469A83}
@@ -14,7 +17,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir=..\release
 OutputBaseFilename=WT-Flight-Setup-{#AppVersion}
-SetupIconFile=..\data\wt-flight.ico
+SetupIconFile=..\wtflight\resources\wt-flight.ico
 UninstallDisplayIcon={app}\WT Flight.exe
 Compression=lzma2
 SolidCompression=yes

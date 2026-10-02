@@ -1,82 +1,6 @@
-"""Layout history, fuel estimation, portable profiles and alert calculations."""
-import copy
-import math
-import re
-import uuid
-from collections import deque
+"""Limit margins, risk ratios and the warning text shown on the HUD."""
 
-from wt_core import METRICS, engine_metric_parts, number
-
-
-class LayoutHistory:
-    def __init__(self):
-        self.states = {}
-        self.future = {}
-
-    def record(self, profiles):
-        for key, groups in profiles.items():
-            past = self.states.setdefault(key, [])
-            if not past or past[-1] != groups:
-                past.append(copy.deepcopy(groups))
-                del past[:-100]
-                self.future[key] = []
-
-    def undo(self, key):
-        past = self.states.get(key, [])
-        if len(past) < 2:
-            return None
-        self.future.setdefault(key, []).append(past.pop())
-        return copy.deepcopy(past[-1])
-
-    def redo(self, key):
-        future = self.future.get(key, [])
-        if not future:
-            return None
-        groups = future.pop()
-        self.states[key].append(copy.deepcopy(groups))
-        return copy.deepcopy(groups)
-
-
-class FuelEstimator:
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.samples = deque()
-        self.rate = None
-        self.aircraft = None
-
-    def update(self, aircraft, fuel, now):
-        fuel = number(fuel)
-        if fuel is None or fuel < 0 or aircraft != self.aircraft:
-            self.reset()
-            self.aircraft = aircraft
-        if fuel is None or fuel < 0:
-            return {}
-        if self.samples:
-            dt = now - self.samples[-1][0]
-            drop = self.samples[-1][1] - fuel
-            # Restart on refuelling, stale data, a new sortie or implausible jettison spikes.
-            if dt <= 0 or dt > 3 or drop < -.5 or drop > max(15, dt * 100):
-                self.samples.clear()
-                self.rate = None
-        self.samples.append((now, fuel))
-        while len(self.samples) > 1 and now - self.samples[0][0] > 8:
-            self.samples.popleft()
-        elapsed = now - self.samples[0][0]
-        if elapsed < 3:
-            return {}
-        raw = max(0, (self.samples[0][1] - fuel) / elapsed)
-        dt = now - self.samples[-2][0] if len(self.samples) > 1 else 0
-        alpha = 1 - math.exp(-dt / 4)
-        self.rate = raw if self.rate is None else self.rate + alpha * (raw - self.rate)
-        # An unchanged quantity for the complete observation window means no estimate.
-        if raw < .0001:
-            self.rate = 0
-        result = {"fuel_flow": self.rate * 60}
-        if self.rate > .005:
-            result["fuel_seconds"] = fuel / self.rate
-        return result
+from wtflight.core.metrics import number
 
 
 def add_margins(state, limits):
@@ -153,52 +77,67 @@ class AlertCooldown:
         return None
 
 
-def validate_profile(payload):
-    if not isinstance(payload, dict) or payload.get("format") != "wt-flight-profile" or payload.get("version") != 1:
-        raise ValueError("Это не профиль WT Flight версии 1")
-    groups = payload.get("groups")
-    if not isinstance(groups, list) or not 0 <= len(groups) <= 100:
-        raise ValueError("В профиле может быть до 100 групп")
-    clean = []
-    for source in groups:
-        if not isinstance(source, dict):
-            raise ValueError("Неверный формат группы")
-        metrics = source.get("metrics")
-        if not isinstance(metrics, list) or not 1 <= len(metrics) <= 60:
-            raise ValueError("Неверный список показателей")
-        if any(not isinstance(m, str) or len(m) > 160 or
-               (m not in METRICS and not engine_metric_parts(m) and not m.startswith(("state:", "indicators:"))) for m in metrics):
-            raise ValueError("Неизвестный показатель в профиле")
-        g = {"id": uuid.uuid4().hex[:10], "metrics": list(dict.fromkeys(metrics)),
-             "title": str(source.get("title", "Группа"))[:60],
-             "font_family": str(source.get("font_family", "Consolas"))[:80]}
-        for key, fallback, low, high in (("x", .1, 0, 1), ("y", .1, 0, 1),
-                                         ("size", 18, 10, 48), ("spacing", 1, 0, 16)):
-            value = number(source.get(key, fallback))
-            if value is None or not low <= value <= high:
-                raise ValueError(f"Некорректное значение {key}")
-            g[key] = int(value) if key in ("size", "spacing") else value
-        for key, fallback in (("labels", True), ("title_visible", False), ("bold", True),
-                               ("shadow", True), ("compact_labels", True), ("outline", True)):
-            g[key] = bool(source.get(key, fallback))
-        label_map = source.get("label_map", {})
-        if not isinstance(label_map, dict) or len(label_map) > 60 or any(
-        not isinstance(key, str) or len(key) > 160 or (key not in METRICS and not engine_metric_parts(key) and not key.startswith(("state:", "indicators:"))) or
-                not isinstance(value, str) or len(value) > 16 for key, value in label_map.items()):
-            raise ValueError("Неверные сокращённые подписи показателей")
-        g["label_map"] = dict(label_map)
-        for key, fallback in (("color", "#64be98"), ("accent", "#64be98"),
-                              ("outline_color", "#07140f")):
-            value = source.get(key, fallback)
-            if not isinstance(value, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
-                raise ValueError("Неверный цвет")
-            g[key] = value
-        outline_width = number(source.get("outline_width", 1.5))
-        if outline_width is None or not .5 <= outline_width <= 4:
-            raise ValueError("Неверная толщина обводки")
-        g["outline_width"] = outline_width
-        hud_style = source.get("hud_style", "custom")
-        g["hud_style"] = hud_style if isinstance(hud_style, str) and len(hud_style) <= 24 else "custom"
-        g["style"] = "panel" if source.get("style") == "panel" else "text"
-        clean.append(g)
-    return clean
+def evaluate(ias, load, positive_limit, negative_limit, speed_limit, caution_ratio=.9):
+    if ias is None and load is None:
+        return "unset", "Нет данных IAS и перегрузки"
+    critical, caution = [], []
+    if load is not None and positive_limit is not None:
+        if load >= positive_limit:
+            critical.append("ПРЕДЕЛ +G")
+        elif load >= positive_limit * caution_ratio:
+            caution.append("Близко к пределу +G")
+    if load is not None and negative_limit is not None:
+        if load <= negative_limit:
+            critical.append("ПРЕДЕЛ −G")
+        elif load <= negative_limit * caution_ratio:
+            caution.append("Близко к пределу −G")
+    if ias is not None and speed_limit is not None:
+        if ias >= speed_limit:
+            critical.append("ПРЕДЕЛ IAS")
+        elif ias >= speed_limit * caution_ratio:
+            caution.append("Близко к пределу IAS")
+    if critical:
+        return "critical", " · ".join(critical)
+    if caution:
+        return "caution", " · ".join(caution)
+    if all(v is None for v in (positive_limit, negative_limit, speed_limit)):
+        return "unset", "Пределы не настроены"
+    return "normal", "В пределах заданных значений"
+
+
+def warning_for(sample, limits):
+    mode, state, _indicators = sample
+    if mode not in ("live", "demo"):
+        return "", ""
+    categories = state.get("_warning_categories", {})
+    enabled = lambda key: categories.get(key, True)
+    caution_ratio = number(state.get("_warning_ratio")) or .9
+    severity, message = evaluate(number(state.get("IAS, km/h")), number(state.get("Ny")),
+                    number(limits.get("positive_g")) if enabled("g") else None,
+                    number(limits.get("negative_g")) if enabled("g") else None,
+                    number(limits.get("ias_kmh")) if enabled("speed") else None, caution_ratio)
+    if severity in ("critical", "caution") and ((limits.get("_g_estimate") and "G" in message) or
+                                                (limits.get("_sweep_conservative") and "IAS" in message)):
+        message = "≈ " + message
+    mach, max_mach = number(state.get("M")), number(limits.get("mach")) if enabled("speed") else None
+    if mach is not None and max_mach and mach >= max_mach:
+        message = (message + " · " if severity == "critical" else "") + "ПРЕДЕЛ MACH"
+        severity = "critical"
+    elif mach is not None and max_mach and mach >= max_mach * caution_ratio and severity not in ("critical", "caution"):
+        severity, message = "caution", "Близко к пределу MACH"
+    fuel_seconds = number(state.get("fuel_seconds"))
+    if enabled("fuel") and fuel_seconds is not None and fuel_seconds <= state.get("_fuel_minutes", 3) * 60:
+        fuel_severity = "critical" if fuel_seconds <= state.get("_fuel_critical_seconds", 60) else "caution"
+        if severity not in ("critical", "caution"):
+            severity, message = fuel_severity, "МАЛО ТОПЛИВА"
+        else:
+            severity, message = ("critical" if fuel_severity == "critical" else severity,
+                                 message + " · МАЛО ТОПЛИВА")
+    aoa, aoa_limit = number(state.get("AoA, deg")), number(state.get("_aoa_limit"))
+    if enabled("stall") and aoa is not None and aoa_limit and aoa_limit > 0 and abs(aoa) >= aoa_limit * caution_ratio:
+        aoa_severity = "critical" if abs(aoa) >= aoa_limit else "caution"
+        aoa_message = "ВОЗМОЖНО СВАЛИВАНИЕ" if aoa_severity == "critical" else "ВЫСОКИЙ УГОЛ АТАКИ"
+        if severity not in ("critical", "caution"):
+            return aoa_severity, aoa_message
+        return "critical" if aoa_severity == "critical" else severity, message + " · " + aoa_message
+    return severity, message

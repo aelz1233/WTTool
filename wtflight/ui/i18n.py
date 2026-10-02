@@ -1,0 +1,61 @@
+"""Russian is the source language of the UI; this maps visible Russian strings to English.
+
+``MainWindow.set_language`` walks the widget tree and swaps texts using ``EN``.
+"""
+
+from wtflight import __version__
+
+EN = {
+    "ОЖИДАНИЕ ИГРЫ": "WAITING FOR GAME", "Тест": "Demo", "Обновить": "Update",
+    "Скачать и установить": "Download and install",
+    "Подключение к игре автоматически": "Connecting to the game automatically",
+    "Самолёт определится в бою": "Aircraft will be detected in battle",
+    "Модель ещё не получена из игры": "The game has not provided an aircraft model yet",
+    "Данные появятся в бою": "Data appears in battle", "Сброс": "Reset",
+    "Расположение": "Layout", "Вид текста": "Text style", "Самолёт": "Aircraft",
+    "Вертолёт": "Helicopter", "Настройки": "Settings", "ПОКАЗАТЕЛИ": "METRICS",
+    "Поиск · IAS, топливо…": "Search · IAS, fuel…",
+    "ПРОФИЛЬ: ОБЩИЙ": "PROFILE: DEFAULT", "Макет": "Layout", "Применить": "Apply",
+    "Сохранить": "Save", "Удалить": "Delete", "Быстрое меню": "Quick menu",
+    "Показать HUD": "Show HUD", "Оформление выбранного текста": "Style selected text",
+    "＋ Группа": "＋ Group", "ОФОРМЛЕНИЕ ПРОГРАММЫ": "APP APPEARANCE",
+    "ГЛОБАЛЬНЫЕ КЛАВИШИ": "GLOBAL HOTKEYS", "Язык интерфейса": "Interface language",
+    "Проверить обновления": "Check for updates", "ОБНОВЛЕНИЯ": "UPDATES",
+    "Вписать": "Fit", "Выравнивание и привязка": "Alignment and snapping",
+    "Инструменты макета": "Layout tools", "Показать сетку": "Show grid",
+    "Сбросить расположение": "Reset layout", "Загрузить фон…": "Load background…",
+    "Убрать фон": "Remove background", "Сохранить макет как…": "Save layout as…",
+    "Импорт макета…": "Import layout…", "Экспорт макета…": "Export layout…",
+    "Поведение HUD": "HUD behavior", "ПОВЕДЕНИЕ HUD": "HUD BEHAVIOR",
+    "Скрывать HUD вне вылета": "Hide HUD outside a sortie",
+    "Скрывать поверх других программ": "Hide when other apps are active",
+    "Частота данных": "Data update rate", "Критический AoA": "Critical AoA",
+    "ПРЕДУПРЕЖДЕНИЯ HUD": "HUD WARNINGS", "Скорость": "Speed", "Перегрузка": "G-load",
+    "Топливо": "Fuel", "Сваливание": "Stall", "Раннее предупреждение": "Early warning",
+    "Критическое топливо": "Critical fuel", "ЗВУКОВЫЕ ПРЕДУПРЕЖДЕНИЯ": "AUDIO WARNINGS",
+    "Включить звук": "Enable sound", "Громкость": "Volume", "Пауза между сигналами": "Alert repeat delay",
+    "Предупреждать о топливе за": "Warn about fuel with", "Прослушать": "Play",
+    "Свой WAV…": "Custom WAV…", "Стандарт": "Default", "Стандартные сигналы": "Default sounds",
+    "Профили": "Profiles", "ГОТОВЫЕ И СОХРАНЁННЫЕ МАКЕТЫ": "BUILT-IN AND SAVED LAYOUTS",
+    "Сохранить как…": "Save as…", "Импорт…": "Import…", "Экспорт…": "Export…",
+    "Сохранить изменения": "Save changes", "Удалить конфиг": "Delete config",
+    "Восстановить выбранный стандартный макет": "Restore selected built-in layout",
+    "ТЕСТ БЕЗ ЗАПУСКА ИГРЫ": "DEMO WITHOUT THE GAME", "Обычный полёт": "Normal flight",
+    "Превышение скорости": "Overspeed", "Высокая перегрузка": "High G-load", "Мало топлива": "Low fuel",
+    "Ракеты: направление угрозы недоступно в используемом локальном API.": "Missile direction is not available in the local API.",
+    "Данные вертолёта появятся после входа в бой": "Helicopter data appears after entering battle",
+    "Применить макет вертолёта": "Apply helicopter layout", "Добавить в группу": "Add to group",
+    "ВЕРТОЛЁТ": "HELICOPTER", "Перемещать текст мышью": "Move text with mouse",
+    "Открыть редактор": "Open editor", "Готово · Esc": "Done · Esc", "Клавиши": "Hotkeys",
+    "Оформление программы": "App appearance",
+    "Пределы самолёта": "Aircraft limits", "Автоматические пределы из базы": "Automatic limits from database",
+    "Шрифт": "Font", "Размер": "Size", "Название": "Name", "Отображение": "Display",
+    "Дополнительные настройки": "Additional settings", "Подписи": "Labels",
+    "Название группы": "Group title", "Жирный": "Bold", "Тень текста": "Text shadow",
+    "Обводка": "Outline", "Цвет значений": "Value color", "Цвет подписей": "Label color",
+    "Цвет обводки": "Outline color", "Убрать показатель": "Remove metric",
+    "Удалить группу": "Delete group",
+    "Принудительно обновить данные API": "Force refresh API data",
+    
+}
+EN[f"Версия программы: {__version__}"] = f"Application version: {__version__}"

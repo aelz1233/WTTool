@@ -7,8 +7,7 @@ import tempfile
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
-import wt_qt
-import wt_feature_ui
+from wtflight.ui.main_window import MainWindow
 
 
 def run(output):
@@ -20,9 +19,7 @@ def run(output):
     app = QApplication.instance() or QApplication([])
     app.setQuitOnLastWindowClosed(False)
     with tempfile.TemporaryDirectory(prefix="wt-flight-check-") as folder:
-        wt_qt.CONFIG_PATH = Path(folder) / "settings.json"
-        wt_feature_ui.CONFIG_PATH = wt_qt.CONFIG_PATH
-        window = wt_qt.MainWindow(start_background_updates=False)
+        window = MainWindow(start_background_updates=False, settings_path=Path(folder) / "settings.json")
         window.telemetry.stop()
         window.show()
 

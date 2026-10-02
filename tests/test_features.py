@@ -1,9 +1,11 @@
 import unittest
 
-from wt_features import (LayoutHistory, FuelEstimator, add_margins, alert_levels,
-                         AlertCooldown, validate_profile, metric_risk)
-from wt_core import available_metrics, engine_metric_ids, expand_engine_metric, metric_label, metric_value
-from wt_qt import warning_for
+from wtflight.core.alerts import AlertCooldown, add_margins, alert_levels, metric_risk, warning_for
+from wtflight.core.fuel import FuelEstimator
+from wtflight.core.history import LayoutHistory
+from wtflight.core.metrics import (available_metrics, engine_metric_ids, expand_engine_metric,
+                                   metric_label, metric_value)
+from wtflight.core.profiles import validate_profile
 
 
 class FeatureTests(unittest.TestCase):

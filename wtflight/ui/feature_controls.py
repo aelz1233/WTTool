@@ -12,11 +12,14 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog, 
                                QHBoxLayout, QInputDialog, QLabel, QListWidget, QListWidgetItem, QMenu,
                                QMessageBox, QPushButton, QSlider, QVBoxLayout, QWidget)
 
-from wt_audio import WarningAudio
-from wt_features import LayoutHistory, FuelEstimator, AlertCooldown, alert_levels, validate_profile
-from wt_visibility import game_is_foreground
-from wt_controls import SteppedSpinBox
-from wt_core import CONFIG_PATH, metric_label, metric_value
+from wtflight.core.alerts import AlertCooldown, alert_levels
+from wtflight.core.fuel import FuelEstimator
+from wtflight.core.history import LayoutHistory
+from wtflight.core.metrics import metric_label, metric_value
+from wtflight.core.profiles import reference_profile, validate_profile
+from wtflight.ui.audio import WarningAudio
+from wtflight.ui.controls import SteppedSpinBox
+from wtflight.win32.foreground import game_is_foreground
 
 
 class FeatureControls:
@@ -354,7 +357,6 @@ class FeatureControls:
                 getattr(self, name).setEnabled(enabled)
 
     def preset_groups(self, kind):
-        from wt_qt import reference_profile
         return reference_profile(kind)
 
     def build_helicopter_tab(self):
@@ -550,7 +552,7 @@ class FeatureControls:
                         wav.getnchannels() not in (1, 2) or not 8000 <= wav.getframerate() <= 48000 or
                         wav.getnframes() / wav.getframerate() > 30):
                     raise ValueError("Поддерживается PCM WAV: 16 бит, mono/stereo, до 30 секунд")
-            folder = CONFIG_PATH.parent / "sounds"
+            folder = self.settings.directory / "sounds"
             folder.mkdir(parents=True, exist_ok=True)
             target = folder / f"custom_{key}.wav"
             if source.resolve() != target.resolve():
@@ -589,7 +591,6 @@ class FeatureControls:
         return True
 
     def start_feature_timers(self):
-        from wt_qt import CONFIG_PATH
         self.populate_screens()
         QApplication.instance().screenAdded.connect(self.populate_screens)
         QApplication.instance().screenRemoved.connect(self.populate_screens)
@@ -606,7 +607,7 @@ class FeatureControls:
         self.demo_badge.setAttribute(Qt.WA_ShowWithoutActivating)
         self.place_demo_badge()
         try:
-            self.audio = WarningAudio(CONFIG_PATH.parent, self)
+            self.audio = WarningAudio(self.settings.directory, self)
             for key, path in self.settings.data.get("flight", {}).get("sound_files", {}).items():
                 self.audio.set_source(key, path)
         except OSError:

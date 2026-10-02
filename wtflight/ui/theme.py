@@ -1,5 +1,15 @@
-"""Application-only themes; HUD typography and colors belong to aircraft profiles."""
+"""Application themes, HUD text presets and the shared Qt stylesheet.
+
+App themes recolour the editor only; HUD typography and colours belong to aircraft profiles.
+"""
 import re
+
+# Editor / HUD palette shared by widgets.
+INK = "#eaf2ff"
+MUTED = "#8fa1b9"
+TEAL = "#57e0c3"
+ORANGE = "#ffbd5a"
+RED = "#ff6879"
 
 THEMES = {
     "graphite": {"name": "Graphite", "description": "Тёмный · спокойный зелёный", "accent": "#8fbca5", "muted": "#a8bcb1"},
@@ -105,3 +115,46 @@ def theme_style(base, theme):
     elif theme in ("dark", "pink"):
         style += "\nQPushButton, QLineEdit, QComboBox, QSpinBox, QTreeWidget, QListWidget { border-radius: 5px; }"
     return style
+
+
+STYLE = """
+QWidget { background: #15181b; color: #e3e7e8; font-family: 'Segoe UI'; font-size: 12px; }
+QLabel, QCheckBox { background: transparent; }
+QLabel#eyebrow { color: #8fbca9; font-size: 10px; font-weight: 600; letter-spacing: 1px; }
+QLabel#headline { color: #f3f5f5; font-size: 19px; font-weight: 600; }
+QLabel#muted { color: #929b9f; font-size: 11px; }
+QLabel#status { background: #21352e; border-radius: 5px; color: #91cdb4; padding: 5px 8px; font-size: 10px; }
+QLabel#status[offline="true"] { background: #30302a; color: #c9bc94; }
+QLineEdit, QComboBox, QSpinBox, QKeySequenceEdit { background: #202529; border: 1px solid #343c40; border-radius: 5px; padding: 6px; color: #e3e7e8; min-height: 16px; }
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QKeySequenceEdit:focus { border-color: #87b9a4; }
+QComboBox::drop-down { border: none; width: 20px; }
+QComboBox QAbstractItemView { background: #242a2e; selection-background-color: #344b40; }
+QListWidget { background: #191e21; border: 1px solid #2d3539; border-radius: 6px; padding: 3px; outline: none; }
+QListWidget::item { border-radius: 4px; padding: 5px 3px; margin: 0; }
+QListWidget::item:hover { background: #28332e; }
+QListWidget::item:selected { background: #344b40; color: #d5eee1; }
+QTreeWidget { background: #191e21; border: 1px solid #2d3539; border-radius: 6px; padding: 3px; outline: none; }
+QTreeWidget::item { height: 27px; padding: 1px 2px; border: none; }
+QTreeWidget::item:hover { background: #26372f; }
+QTreeWidget::item:selected { background: #344b40; color: #e4f2eb; }
+QPushButton { background: #262d31; border: 1px solid #394246; border-radius: 5px; padding: 7px 10px; font-weight: 500; }
+QPushButton:hover { background: #35423b; border-color: #6a8d7b; }
+QPushButton:checked { background: #344b40; border-color: #8fbca5; color: #d5eee1; }
+QPushButton#primary { background: #8fbca5; border: 1px solid #8fbca5; color: #14241c; }
+QPushButton#primary:hover { background: #abd2be; }
+QPushButton#danger { color: #d8999d; }
+QPushButton#stepButton { padding: 2px; min-width: 28px; max-width: 32px; min-height: 24px; font-size: 10px; }
+QCheckBox { spacing: 7px; padding: 2px 0; }
+QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid #53635c; border-radius: 3px; background: #202529; }
+QCheckBox::indicator:checked { background: #8fbca5; border: 1px solid #aecfbe; }
+QSlider::groove:horizontal { background: #34433c; height: 4px; border-radius: 2px; }
+QSlider::handle:horizontal { background: #8fbca5; width: 12px; margin: -5px 0; border-radius: 6px; }
+QTabWidget::pane { border: none; border-top: 1px solid #30383c; }
+QTabBar::tab { background: transparent; color: #939da0; padding: 10px 16px; border-bottom: 2px solid transparent; }
+QTabBar::tab:selected { color: #cce2d6; border-bottom-color: #8fbca5; }
+QTabBar::tab:hover { color: #e3e7e8; }
+QScrollArea { border: none; }
+QScrollBar:vertical { background: #191e21; width: 6px; }
+QScrollBar::handle:vertical { background: #46534c; border-radius: 3px; min-height: 24px; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+"""

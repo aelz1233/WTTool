@@ -1,34 +1,58 @@
-"""Start the War Thunder HUD editor with the local project environment."""
+"""Application start-up: dependency check, crash logging and the Qt event loop."""
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
 
+def _install_crash_log():
+    """A windowed frozen build has no console, so unhandled errors go to a file."""
+    import logging
+    from logging.handlers import RotatingFileHandler
+
+    from wtflight.paths import LOG_DIR
+
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(level=logging.ERROR, handlers=[RotatingFileHandler(
+        LOG_DIR / "errors.log", maxBytes=1_000_000, backupCount=2, encoding="utf-8")])
+    sys.excepthook = lambda kind, value, tb: logging.error("Unhandled exception", exc_info=(kind, value, tb))
+
+
 def main():
+    from PySide6.QtGui import QIcon
+    from PySide6.QtWidgets import QApplication
+
+    from wtflight import APP_NAME, __version__
+    from wtflight.paths import ICON
+    from wtflight.ui.main_window import MainWindow
+    from wtflight.ui.theme import STYLE
+
+    app = QApplication([])
+    app.setApplicationName(APP_NAME)
+    app.setApplicationVersion(__version__)
+    app.setWindowIcon(QIcon(str(ICON)))
+    app.setStyleSheet(STYLE)
+    app.setQuitOnLastWindowClosed(False)
+    window = MainWindow()
+    window.show()
+    app.aboutToQuit.connect(window.stop_workers)
+    app.aboutToQuit.connect(window.close_hotkeys)
+    app.exec()
+
+
+def run():
+    if getattr(sys, "frozen", False):
+        _install_crash_log()
     try:
         import PySide6  # noqa: F401
     except ImportError:
-        executable = Path(__file__).parent / ".venv" / "Scripts" / "python.exe"
-        if executable.exists() and Path(sys.executable).resolve() != executable.resolve():
-            os.execv(str(executable), [str(executable), str(Path(__file__).resolve())])
         raise SystemExit("PySide6 не найден. Установите зависимости: python -m pip install -r requirements.txt")
-    from wt_qt import main as run
     if len(sys.argv) == 3 and sys.argv[1] == "--self-check":
-        from wt_selfcheck import run as check
+        from wtflight.selfcheck import run as check
         raise SystemExit(check(Path(sys.argv[2])))
-    run()
+    main()
 
 
 if __name__ == "__main__":
-    if getattr(sys, "frozen", False):
-        import logging
-        from logging.handlers import RotatingFileHandler
-        logs = Path(os.environ.get("APPDATA", str(Path.home()))) / "WTFlightAssistant" / "logs"
-        logs.mkdir(parents=True, exist_ok=True)
-        logging.basicConfig(level=logging.ERROR, handlers=[RotatingFileHandler(
-            logs / "errors.log", maxBytes=1_000_000, backupCount=2, encoding="utf-8")])
-        sys.excepthook = lambda kind, value, tb: logging.error("Unhandled exception", exc_info=(kind, value, tb))
-    main()
+    run()

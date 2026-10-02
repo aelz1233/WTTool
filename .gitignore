@@ -19,10 +19,12 @@ audit_artifacts/
 *.local
 qt_*_preview.png
 
-wt_assistant_config.json
 
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 
+*.spec
 *.spec~
+*.egg-info/
+self-check-output/

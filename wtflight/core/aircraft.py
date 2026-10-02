@@ -1,6 +1,6 @@
 """Versioned flight-model data, aircraft aliases and automatic limit estimates.
 
-Data provenance and its license are in data/flight_models/metadata.json and LICENSE.
+Data provenance and its license are in resources/flight_models/metadata.json and LICENSE.
 The per-wing load convention is documented by SpaceCapo/warthunder-byoh, core_client.
 """
 
@@ -12,9 +12,8 @@ from pathlib import Path
 import re
 from urllib.request import Request, urlopen
 
-from wt_core import number
-
-BUNDLED = Path(__file__).parent / "data" / "flight_models"
+from wtflight.core.metrics import number
+from wtflight.paths import FLIGHT_MODELS as BUNDLED
 UPSTREAM = "https://raw.githubusercontent.com/SpaceCapo/warthunder-byo-fm/main/"
 
 

@@ -3,6 +3,8 @@ from PySide6.QtCore import QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QApplication, QGraphicsScene, QGraphicsView, QRubberBand
 
+from wtflight.ui.group_view import MIME, GroupView
+
 
 class FlightCanvas(QGraphicsView):
     group_selected = Signal(str)
@@ -264,3 +266,8 @@ class FlightCanvas(QGraphicsView):
             font.setPixelSize(round(11 / max(.1, self.transform().m11())))
             painter.setFont(font)
             painter.drawText(screen, Qt.AlignCenter, "Точный макет экрана\nФон → скриншот боя")
+
+
+class ScreenCanvas(FlightCanvas):
+    def __init__(self):
+        super().__init__(GroupView, MIME)

@@ -1,11 +1,10 @@
 import io
-import json
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from wt_aircraft import AircraftDatabase, BUNDLED, download_database
+from wtflight.core.aircraft import AircraftDatabase, BUNDLED, download_database
 
 
 class AircraftTests(unittest.TestCase):
@@ -48,7 +47,7 @@ class AircraftTests(unittest.TestCase):
         responses = [io.BytesIO(b"2.60.0.1"),
                      io.BytesIO((BUNDLED / "fm_data_db.csv").read_bytes()),
                      io.BytesIO(b"corrupt names file")]
-        with patch("wt_aircraft.urlopen", side_effect=responses):
+        with patch("wtflight.core.aircraft.urlopen", side_effect=responses):
             with self.assertRaises(ValueError):
                 download_database(self.temp.name, "2.59.0.28")
         self.assertEqual(target.read_text(), "existing snapshot")
@@ -57,7 +56,7 @@ class AircraftTests(unittest.TestCase):
         responses = [io.BytesIO(b"2.60.0.1"),
                      io.BytesIO((BUNDLED / "fm_data_db.csv").read_bytes()),
                      io.BytesIO((BUNDLED / "fm_names_db.csv").read_bytes())]
-        with patch("wt_aircraft.urlopen", side_effect=responses):
+        with patch("wtflight.core.aircraft.urlopen", side_effect=responses):
             updated = download_database(self.temp.name, "2.59.0.28")
         self.assertEqual(updated.version, "2.60.0.1")
         self.assertEqual(AircraftDatabase.load(self.temp.name).version, "2.60.0.1")

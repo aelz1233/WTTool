@@ -1,6 +1,6 @@
 """Desktop regression checks. Uses a temporary profile, never the user's settings.
 
-Run with: .venv/Scripts/python.exe -m unittest test_hud_desktop -v
+Run with: python -m unittest tests.test_hud_desktop -v
 """
 
 import ctypes
@@ -18,16 +18,21 @@ from PySide6.QtGui import QKeySequence, QImage, QColor, QWheelEvent, QFontInfo, 
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-import wt_qt
-import wt_feature_ui
-from wt_hotkey import GlobalHotkey
+from wtflight.core.alerts import warning_for
+from wtflight.core.profiles import new_group, validate_profile
+from wtflight.core.settings import Settings
+from wtflight.ui import feature_controls, group_view
+from wtflight.ui.group_view import GroupView, alert_level, flashing_alert_color
+from wtflight.ui.main_window import MainWindow
+from wtflight.ui.theme import STYLE
+from wtflight.win32.hotkey import GlobalHotkey
 
 
 class DesktopTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
-        cls.app.setStyleSheet(wt_qt.STYLE)
+        cls.app.setStyleSheet(STYLE)
         cls.app.setQuitOnLastWindowClosed(False)
 
     def setUp(self):
@@ -35,11 +40,8 @@ class DesktopTests(unittest.TestCase):
         self.old_excepthook = sys.excepthook
         sys.excepthook = lambda kind, value, tb: self.qt_errors.append(str(value))
         self.temp = tempfile.TemporaryDirectory()
-        self.previous_path = wt_qt.CONFIG_PATH
-        self.previous_feature_path = wt_feature_ui.CONFIG_PATH
-        wt_qt.CONFIG_PATH = Path(self.temp.name) / "settings.json"
-        wt_feature_ui.CONFIG_PATH = wt_qt.CONFIG_PATH
-        self.window = wt_qt.MainWindow(start_background_updates=False)
+        self.config_path = Path(self.temp.name) / "settings.json"
+        self.window = MainWindow(start_background_updates=False, settings_path=self.config_path)
         self.window.telemetry.stop()
         QTest.qWait(20)
 
@@ -53,8 +55,6 @@ class DesktopTests(unittest.TestCase):
             overlay.close()
         self.window.deleteLater()
         QTest.qWait(20)
-        wt_qt.CONFIG_PATH = self.previous_path
-        wt_feature_ui.CONFIG_PATH = self.previous_feature_path
         self.temp.cleanup()
         sys.excepthook = self.old_excepthook
         self.assertEqual(self.qt_errors, [], "Unhandled exception in a Qt signal/event")
@@ -114,7 +114,7 @@ class DesktopTests(unittest.TestCase):
         w.groups()[0]["x"] = .42
         w.overwrite_preset()
         self.assertEqual(w.settings.data["saved_layouts"]["Мой конфиг"][0]["x"], .42)
-        with patch.object(wt_feature_ui.QMessageBox, "question", return_value=wt_feature_ui.QMessageBox.StandardButton.Yes):
+        with patch.object(feature_controls.QMessageBox, "question", return_value=feature_controls.QMessageBox.StandardButton.Yes):
             w.delete_preset()
         self.assertNotIn("Мой конфиг", w.settings.data["saved_layouts"])
         self.assertFalse(w.overwrite_preset_button.isEnabled())
@@ -172,7 +172,7 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(w.settings.data["flight"]["telemetry_hz"], 15)
         w.present_sample("live", {"valid": True, "AoA, deg": 12}, {"type": w.aircraft})
         self.assertEqual(w.sample[1]["_aoa_limit"], 12)
-        self.assertEqual(wt_qt.warning_for(w.sample, w.current_limits())[0], "critical")
+        self.assertEqual(warning_for(w.sample, w.current_limits())[0], "critical")
 
     def test_warning_preferences_persist_and_hide_disabled_category(self):
         w = self.window
@@ -185,17 +185,17 @@ class DesktopTests(unittest.TestCase):
         self.assertFalse(flight["warning_categories"]["speed"])
         state = {"valid": True, "IAS, km/h": 1200}
         w.present_sample("live", state, {"type": w.aircraft})
-        self.assertEqual(wt_qt.warning_for(w.sample, {"ias_kmh": 1000})[0], "unset")
+        self.assertEqual(warning_for(w.sample, {"ias_kmh": 1000})[0], "unset")
 
     def test_visibility_preferences(self):
         w = self.window
         w.hud_visible = True
         w.overlay_editing = False
-        with patch('wt_feature_ui.game_is_foreground', return_value=True):
+        with patch('wtflight.ui.feature_controls.game_is_foreground', return_value=True):
             self.assertFalse(w.should_show_hud())
             w.on_sample('live', {'valid': True}, {'type': 'unknown'})
             self.assertTrue(w.should_show_hud())
-        with patch('wt_feature_ui.game_is_foreground', return_value=False):
+        with patch('wtflight.ui.feature_controls.game_is_foreground', return_value=False):
             self.assertFalse(w.should_show_hud())
             w.hide_other_check.setChecked(False)
             self.assertTrue(w.should_show_hud())
@@ -258,7 +258,7 @@ class DesktopTests(unittest.TestCase):
         q.font_box.setCurrentText("Lucida Console")
         q.style_box.setCurrentIndex(1)
         q.shadow.setChecked(False)
-        saved = json.loads(wt_qt.CONFIG_PATH.read_text(encoding="utf-8"))
+        saved = json.loads(self.config_path.read_text(encoding="utf-8"))
         group = next(g for g in saved["profiles"]["default"] if g["id"] == selected["id"])
         self.assertEqual((group["size"], group["font_family"], group["style"], group["shadow"]),
                          (23, "Lucida Console", "panel", False))
@@ -277,7 +277,7 @@ class DesktopTests(unittest.TestCase):
         QTest.mouseMove(view, QPoint(-45, 30), delay=20)
         QTest.mouseRelease(view, Qt.LeftButton, pos=QPoint(5, 5))
         self.assertLess(view.group["x"], old_x)
-        saved = json.loads(wt_qt.CONFIG_PATH.read_text(encoding="utf-8"))
+        saved = json.loads(self.config_path.read_text(encoding="utf-8"))
         self.assertEqual(saved["profiles"]["default"][0]["x"], view.group["x"])
         QTest.keyClick(w.quick_settings, Qt.Key_Escape)
         self.assertFalse(w.quick_settings.isVisible())
@@ -303,7 +303,7 @@ class DesktopTests(unittest.TestCase):
         w.quick_settings.key_edit.setKeySequence(QKeySequence("Ctrl+Shift+F9"))
         w.quick_settings.apply_hotkey()
         self.assertEqual(w.hotkey.sequence, "Ctrl+Shift+F9")
-        self.assertEqual(wt_qt.Settings().data["menu_hotkey"], "Ctrl+Shift+F9")
+        self.assertEqual(Settings(self.config_path).data["menu_hotkey"], "Ctrl+Shift+F9")
         other = GlobalHotkey(lambda: None)
         try:
             ok, error = other.register("Ctrl+Shift+F10")
@@ -319,12 +319,12 @@ class DesktopTests(unittest.TestCase):
 
     def test_migration_preserves_layout_and_short_labels(self):
         group = {"id": "old", "metrics": ["g"], "x": .3, "y": .6, "size": 18, "color": "#ffffff"}
-        wt_qt.CONFIG_PATH.write_text(json.dumps({"version": 3, "profiles": {"default": [group]}}))
-        settings = wt_qt.Settings()
+        self.config_path.write_text(json.dumps({"version": 3, "profiles": {"default": [group]}}))
+        settings = Settings(self.config_path)
         migrated = settings.groups("default")[0]
         self.assertEqual((migrated["x"], migrated["y"], migrated["color"]), (.3, .6, "#ffffff"))
         self.assertEqual(migrated["font_family"], "Consolas")
-        view = wt_qt.GroupView(migrated, True)
+        view = GroupView(migrated, True)
         view.set_sample(("live", {"Ny": 3.5}, {}), {})
         self.assertEqual(view.lines()[0][:2], ("LDF", "+3.5 G"))
         self.assertEqual(view.hud_font().pixelSize(), 18)
@@ -383,10 +383,10 @@ class DesktopTests(unittest.TestCase):
     def test_themes_and_shared_hotkey_preferences(self):
         w = self.window
         w.set_theme("arctic")
-        self.assertEqual(wt_qt.Settings().data["theme"], "arctic")
+        self.assertEqual(Settings(self.config_path).data["theme"], "arctic")
         self.assertEqual(w.quick_settings.theme_box.currentData(), "arctic")
         w.quick_settings.theme_box.setCurrentIndex(w.quick_settings.theme_box.findData("cockpit"))
-        self.assertEqual(wt_qt.Settings().data["theme"], "cockpit")
+        self.assertEqual(Settings(self.config_path).data["theme"], "cockpit")
         self.assertTrue(w.theme_buttons["cockpit"].isChecked())
         original = w.hotkeys["hud"].sequence
         ok, message = w.apply_hotkey("hud", w.hotkeys["menu"].sequence)
@@ -394,7 +394,7 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(w.hotkeys["hud"].sequence, original)
         self.assertTrue(w.apply_hotkey("hud", "")[0])
         self.assertIsNone(w.hotkeys["hud"].active_id)
-        self.assertEqual(wt_qt.Settings().data["hotkeys"]["hud"], "")
+        self.assertEqual(Settings(self.config_path).data["hotkeys"]["hud"], "")
         self.assertTrue(w.apply_hotkey("hud", "Ctrl+Shift+H")[0])
         self.assertEqual(w.main_key_panel.edits["hud"].keySequence().toString(), "Ctrl+Shift+H")
         self.assertEqual(w.quick_settings.key_panel.edits["hud"].keySequence().toString(), "Ctrl+Shift+H")
@@ -447,17 +447,17 @@ class DesktopTests(unittest.TestCase):
         self.assertTrue(w.load_background(str(source)))
         source.unlink()
         self.assertFalse(w.canvas.background.isNull())
-        saved = wt_qt.Settings().data
+        saved = Settings(self.config_path).data
         self.assertTrue(Path(saved["preview"]["image"]).exists())
         w.background_dim.setValue(35)
-        self.assertEqual(wt_qt.Settings().data["preview"]["dimming"], 35)
+        self.assertEqual(Settings(self.config_path).data["preview"]["dimming"], 35)
         w.restore_background()
         self.assertFalse(w.canvas.background.isNull())
         self.assertEqual(w.canvas.dimming, 35)
         self.assertTrue(all(not hasattr(view, "background") for view in w.overlays))
         w.clear_background()
         self.assertTrue(w.canvas.background.isNull())
-        self.assertEqual(wt_qt.Settings().data["preview"]["image"], "")
+        self.assertEqual(Settings(self.config_path).data["preview"]["image"], "")
         w.restore_background()
         self.assertTrue(w.canvas.background.isNull(), "Clearing the image must not restore the default")
 
@@ -602,14 +602,14 @@ class DesktopTests(unittest.TestCase):
         w = self.window
         self.assertIsNotNone(w.audio)
         source = str(w.audio.default_paths['speed'])
-        with patch('wt_feature_ui.QFileDialog.getOpenFileName', return_value=(source, '')):
+        with patch('wtflight.ui.feature_controls.QFileDialog.getOpenFileName', return_value=(source, '')):
             w.choose_warning_sound()
         paths = dict(w.settings.data['flight']['sound_files'])
         self.assertTrue(Path(paths['speed']).is_file())
         self.assertNotEqual(paths['speed'], source)
         w.volume_slider.setValue(42)
         w.repeat_spin.setValue(7)
-        self.assertEqual(wt_qt.Settings().data['flight']['sound_files'], paths)
+        self.assertEqual(Settings(self.config_path).data['flight']['sound_files'], paths)
         self.assertTrue(w.audio.set_source('speed', paths['speed']))
         for _ in range(40):
             if all(effect.isLoaded() for effect in w.audio.effects.values()):
@@ -631,14 +631,14 @@ class DesktopTests(unittest.TestCase):
 
     def test_fuel_warning_matches_color_at_exact_critical_threshold(self):
         sample = ('live', {'fuel_seconds': 60, '_fuel_minutes': 1}, {})
-        self.assertEqual(wt_qt.warning_for(sample, {})[0], 'critical')
+        self.assertEqual(warning_for(sample, {})[0], 'critical')
 
     def test_critical_speed_colors_both_label_and_value(self):
-        view = wt_qt.GroupView(wt_qt.new_group('ias'), True)
+        view = GroupView(new_group('ias'), True)
         view.set_sample(('live', {'IAS, km/h': 1001}, {}), {'ias_kmh': 1000})
-        with patch('wt_qt.time.monotonic', return_value=1.1):
+        with patch('wtflight.ui.group_view.time.monotonic', return_value=1.1):
             image = view.grab().toImage()
-        split = wt_qt.QFontMetrics(view.hud_font()).horizontalAdvance('IAS') + 3
+        split = group_view.QFontMetrics(view.hud_font()).horizontalAdvance('IAS') + 3
         def red_pixels(left, right):
             return sum(1 for x in range(left, right) for y in range(image.height())
                        if (lambda c: c.red() > 200 and c.green() < 150 and c.blue() < 160)(image.pixelColor(x, y)))
@@ -647,16 +647,15 @@ class DesktopTests(unittest.TestCase):
         view.deleteLater()
 
     def test_alert_rows_flash_yellow_then_red_at_their_thresholds(self):
-        self.assertEqual(wt_qt.alert_level(.89), '')
-        self.assertEqual(wt_qt.alert_level(.9), 'caution')
-        self.assertEqual(wt_qt.alert_level(1), 'critical')
-        self.assertEqual(wt_qt.flashing_alert_color('caution', '#66d6a0', 1.1).name(), '#ffbd5a')
-        self.assertEqual(wt_qt.flashing_alert_color('critical', '#66d6a0', 1.1).name(), '#ff6879')
-        self.assertEqual(wt_qt.flashing_alert_color('critical', '#66d6a0', 1.2).name(), '#66d6a0')
+        self.assertEqual(alert_level(.89), '')
+        self.assertEqual(alert_level(.9), 'caution')
+        self.assertEqual(alert_level(1), 'critical')
+        self.assertEqual(flashing_alert_color('caution', '#66d6a0', 1.1).name(), '#ffbd5a')
+        self.assertEqual(flashing_alert_color('critical', '#66d6a0', 1.1).name(), '#ff6879')
+        self.assertEqual(flashing_alert_color('critical', '#66d6a0', 1.2).name(), '#66d6a0')
 
     def test_all_presets_restore_and_export_roundtrip(self):
         w = self.window
-        from wt_features import validate_profile
         self.assertEqual([w.preset_box.itemData(index)[1] for index in range(w.preset_box.count())],
                          ["combat", "engine", "helicopter", "empty"])
         for index in range(w.preset_box.count()):
@@ -678,10 +677,10 @@ class DesktopTests(unittest.TestCase):
         w.on_sample("live", state, {"type": "f_16c_block_50"})
         self.assertEqual(w.current_limits()["ias_kmh"], 1555)
         self.assertIn("limit_pos_g", w.available)
-        self.assertEqual(wt_qt.warning_for(w.sample, w.current_limits())[0], "caution")
+        self.assertEqual(warning_for(w.sample, w.current_limits())[0], "caution")
         w.settings.data["limits"][w.aircraft] = {"ias_kmh": 1300}
         self.assertEqual(w.current_limits()["ias_kmh"], 1300)
-        self.assertEqual(wt_qt.warning_for(w.sample, w.current_limits())[0], "critical")
+        self.assertEqual(warning_for(w.sample, w.current_limits())[0], "critical")
         w.on_sample("live", state, {"type": "unknown_plane"})
         self.assertEqual(w.current_limits(), {})
         self.assertNotIn("limit_ias", w.available)
