@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  test:
+  core:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,6 +15,17 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - run: python -m pip install ruff
       - run: ruff check .
-      - run: python -m unittest discover -s tests -t . -v
+      - run: python -m unittest tests.test_aircraft tests.test_features -v
       - run: python -m wtflight --self-check audit_artifacts/ci-self-check
-
+  desktop:
+    runs-on: windows-latest
+    needs: core
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - run: python -m unittest tests.test_hud_desktop -v

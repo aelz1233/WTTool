@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 from html import escape
 import json
 import os
@@ -38,6 +39,7 @@ from wt_canvas import FlightCanvas
 from wt_features import metric_risk, add_margins
 from wt_feature_ui import FeatureControls
 from wt_controls import SteppedSpinBox
+from wtflight.core.models import HudGroup
 
 
 API = "http://127.0.0.1:8111"
@@ -107,12 +109,7 @@ def hud_label(metric_id):
 
 
 def new_group(metric_id, x=0.08, y=0.16):
-    return {"id": uuid.uuid4().hex[:10], "title": "НОВЫЙ БЛОК",
-            "metrics": [metric_id], "x": x, "y": y, "style": "text",
-            "size": 18, "labels": True, "title_visible": False,
-            "font_family": "Lucida Console", "bold": True, "shadow": False,
-            "compact_labels": True, "spacing": 1, "color": "#66d6a0", "accent": "#66d6a0",
-            "hud_style": "wtrti", "outline": True, "outline_color": "#07140f", "outline_width": 1.4}
+    return HudGroup(metric_id=metric_id, x=x, y=y).to_dict()
 
 
 def reference_profile(kind="combat"):
@@ -290,10 +287,12 @@ class UpdateChecker(QThread):
                 raise ValueError("GitHub вернул неожиданный ответ")
             tag = str(payload.get("tag_name", "")).strip()
             version = tag.lstrip("vV")
-            asset = next((item.get("browser_download_url") for item in payload.get("assets", [])
-                          if str(item.get("name", "")).lower().endswith(".exe")), "")
+            asset_item = next((item for item in payload.get("assets", [])
+                               if str(item.get("name", "")).lower().endswith(".exe")), {})
+            asset = asset_item.get("browser_download_url", "")
             self.completed.emit({"tag": tag, "version": version, "url": payload.get("html_url", GITHUB_RELEASES),
-                                 "asset": asset, "name": payload.get("name", tag)}, "")
+                                 "asset": asset, "digest": asset_item.get("digest", ""),
+                                 "name": payload.get("name", tag)}, "")
         except (OSError, ValueError, KeyError, TypeError) as error:
             self.completed.emit(None, str(error))
 
@@ -302,9 +301,14 @@ class InstallerDownloader(QThread):
     progress = Signal(int)
     completed = Signal(str, str)
 
-    def __init__(self, url, filename):
+    def __init__(self, url, filename, expected_digest=""):
         super().__init__()
         self.url, self.filename = url, filename
+        self.expected_digest = str(expected_digest or "").removeprefix("sha256:").lower()
+        self.cancel_event = threading.Event()
+
+    def cancel(self):
+        self.cancel_event.set()
 
     def run(self):
         try:
@@ -313,17 +317,28 @@ class InstallerDownloader(QThread):
             with urlopen(request, timeout=20) as response:
                 total = int(response.headers.get("Content-Length", "0") or 0)
                 received = 0
+                digest = hashlib.sha256()
                 with target.open("wb") as output:
                     while True:
+                        if self.cancel_event.is_set():
+                            raise RuntimeError("Отменено пользователем")
                         chunk = response.read(1024 * 256)
                         if not chunk:
                             break
                         output.write(chunk)
+                        digest.update(chunk)
                         received += len(chunk)
                         if total:
                             self.progress.emit(min(100, int(received * 100 / total)))
+            actual = digest.hexdigest().lower()
+            if self.expected_digest and actual != self.expected_digest:
+                target.unlink(missing_ok=True)
+                raise ValueError("Проверка SHA-256 установщика не пройдена")
             self.completed.emit(str(target), "")
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, RuntimeError) as error:
+            target = Path(tempfile.gettempdir()) / self.filename
+            if self.cancel_event.is_set():
+                target.unlink(missing_ok=True)
             self.completed.emit("", str(error))
 
 
@@ -1993,10 +2008,10 @@ class MainWindow(FeatureControls, QMainWindow):
         self.update_progress.setAutoClose(False)
         self.update_progress.setMinimumDuration(0)
         self.update_progress.show()
-        self.installer_downloader = InstallerDownloader(asset, filename)
+        self.installer_downloader = InstallerDownloader(asset, filename, info.get("digest", ""))
         self.installer_downloader.progress.connect(self.update_progress.setValue)
         self.installer_downloader.completed.connect(self.on_installer_downloaded)
-        self.update_progress.canceled.connect(self.installer_downloader.terminate)
+        self.update_progress.canceled.connect(self.installer_downloader.cancel)
         self.installer_downloader.start()
 
     def on_installer_downloaded(self, path, error):
