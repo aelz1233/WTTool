@@ -45,7 +45,7 @@ TEAL = "#57e0c3"
 ORANGE = "#ffbd5a"
 RED = "#ff6879"
 HUD_GREEN = "#64be98"
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 GITHUB_REPO = "aelz1233/WTTool"
 GITHUB_RELEASES = f"https://github.com/{GITHUB_REPO}/releases"
 
@@ -655,6 +655,19 @@ class MetricList(QTreeWidget):
         self.clear()
         sections = {}
         theme = THEMES.get(QApplication.instance().property("theme"), THEMES["graphite"])
+        english = QApplication.instance().property("language") == "en"
+        section_en = {"Полёт": "Flight", "Двигатель": "Engine", "Механизация": "Configuration",
+                      "Навигация": "Navigation", "Предупреждения": "Warnings", "Пределы самолёта": "Aircraft limits",
+                      "Другие данные": "Other data"}
+        label_en = {"ias": "IAS · Indicated", "tas": "TAS · True airspeed", "g": "LDF · G-load",
+                    "mach": "MACH · Mach number", "altitude": "ALT · Altitude", "climb": "CLMB · Climb rate",
+                    "aoa": "AOA · Angle of attack", "aos": "AOS · Sideslip", "fuel": "FUEL · Fuel",
+                    "rpm": "RPM · All engines", "throttle": "THR · All engines", "power": "PWR · All engines",
+                    "oil_temp": "OIL · All engines", "water_temp": "WTR · Cooling", "fuel_time": "FUEL · Remaining",
+                    "fuel_flow": "FUEL · Flow", "ias_margin": "IAS · Margin", "mach_margin": "MACH · Margin",
+                    "g_margin_pos": "G · Positive margin", "g_margin_neg": "G · Negative margin",
+                    "limit_ias": "IAS · Limit", "limit_mach": "MACH · Limit", "limit_pos_g": "G · Positive limit",
+                    "limit_neg_g": "G · Negative limit", "limit_gear": "GEAR · Limit", "limit_flaps": "FLAPS · Limit"}
         for metric_id in ids:
             label = metric_label(metric_id)
             code = hud_label(metric_id)
@@ -664,8 +677,9 @@ class MetricList(QTreeWidget):
                        "Топливо и двигатель" if engine_metric_parts(metric_id) else "Другие данные")
             section = {"Топливо и двигатель": "Двигатель", "Конфигурация": "Механизация",
                        "Система": "Предупреждения"}.get(section, section)
+            section_display = section_en.get(section, section) if english else section
             if section not in sections:
-                parent = QTreeWidgetItem(self, [section])
+                parent = QTreeWidgetItem(self, [section_display])
                 parent.setData(0, Qt.UserRole + 1, section)
                 parent.setFlags(Qt.ItemIsEnabled)
                 parent.setFirstColumnSpanned(True)
@@ -686,14 +700,18 @@ class MetricList(QTreeWidget):
                        "limit_pos_g": "G · Предел +", "limit_neg_g": "G · Предел −",
                        "limit_gear": "GEAR · Предел", "limit_flaps": "FLAPS · Предел"}.get(metric_id,
                                                                                                   f"{code} · {label}" if engine_metric_parts(metric_id) else label)
+            if english:
+                display = label_en.get(metric_id, display)
+                label = label_en.get(metric_id, label)
             item = QTreeWidgetItem(sections[section], [display, "+"])
             item.setToolTip(0, label)
             item.setData(0, Qt.UserRole, metric_id)
             item.setTextAlignment(1, Qt.AlignCenter)
             item.setForeground(1, QColor(theme["accent"]))
             item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled)
-            item.setToolTip(0, f"{label}\n\n{metric_help(metric_id)}\n\nПеретащите на макет или на существующую группу.")
-            item.setToolTip(1, "Добавить отдельный показатель")
+            item.setToolTip(0, f"{label}\n\n{metric_help(metric_id)}\n\n" +
+                             ("Drag to the layout or an existing group." if english else "Перетащите на макет или на существующую группу."))
+            item.setToolTip(1, "Add metric" if english else "Добавить отдельный показатель")
         for section, parent in sections.items():
             parent.setText(0, f"{section}  ·  {parent.childCount()}")
             parent.setExpanded(bool(query) or section in self.expanded_sections)
@@ -1215,7 +1233,7 @@ class MainWindow(FeatureControls, QMainWindow):
         self.resize(720, 560)
         self.setMinimumSize(640, 520)
         self.build_ui()
-        self.set_language(self.settings.data.get("language", "ru"), save=False)
+        self.set_language(self.settings.data.get("language", "en"), save=False)
         self.set_theme(self.settings.data.get("theme", "graphite"))
         self.install_editor_shortcuts()
         QApplication.instance().installEventFilter(self)
@@ -1238,6 +1256,8 @@ class MainWindow(FeatureControls, QMainWindow):
         self.hotkey_hint.setText(f"{self.hotkey.sequence} • быстрое меню" if not self.hotkey_error else
                                 "Клавиша занята • откройте меню")
         self.quick_settings = QuickSettings(self)
+        # Quick menu is created after the main window; apply the selected language to it too.
+        self.set_language(self.settings.data.get("language", "en"), save=False)
         self.main_key_panel.sync()
         self.settings.save()
         interval = 1 / self.settings.data.get("flight", {}).get("telemetry_hz", 10)
@@ -1791,8 +1811,13 @@ class MainWindow(FeatureControls, QMainWindow):
     def set_language(self, language="ru", save=True):
         language = language if language in ("ru", "en") else "ru"
         self.settings.data["language"] = language
+        QApplication.instance().setProperty("language", language)
         translations = {
             "ОЖИДАНИЕ ИГРЫ": "WAITING FOR GAME", "Тест": "Demo", "Обновить": "Update",
+            "Подключение к игре автоматически": "Connecting to the game automatically",
+            "Самолёт определится в бою": "Aircraft will be detected in battle",
+            "Модель ещё не получена из игры": "The game has not provided an aircraft model yet",
+            "Данные появятся в бою": "Data appears in battle", "Сброс": "Reset",
             "Расположение": "Layout", "Вид текста": "Text style", "Самолёт": "Aircraft",
             "Вертолёт": "Helicopter", "Настройки": "Settings", "ПОКАЗАТЕЛИ": "METRICS",
             "Поиск · IAS, топливо…": "Search · IAS, fuel…", "Данные появятся в бою": "Data appears in battle",
@@ -1802,6 +1827,34 @@ class MainWindow(FeatureControls, QMainWindow):
             "＋ Группа": "＋ Group", "ОФОРМЛЕНИЕ ПРОГРАММЫ": "APP APPEARANCE",
             "ГЛОБАЛЬНЫЕ КЛАВИШИ": "GLOBAL HOTKEYS", "Язык интерфейса": "Interface language",
             "Проверить обновления": "Check for updates", "ОБНОВЛЕНИЯ": "UPDATES",
+            "Вписать": "Fit", "Выравнивание и привязка": "Alignment and snapping",
+            "Инструменты макета": "Layout tools", "Показать сетку": "Show grid",
+            "Сбросить расположение": "Reset layout", "Загрузить фон…": "Load background…",
+            "Убрать фон": "Remove background", "Сохранить макет как…": "Save layout as…",
+            "Импорт макета…": "Import layout…", "Экспорт макета…": "Export layout…",
+            "Поведение HUD": "HUD behavior", "ПОВЕДЕНИЕ HUD": "HUD BEHAVIOR",
+            "Скрывать HUD вне вылета": "Hide HUD outside a sortie",
+            "Скрывать поверх других программ": "Hide when other apps are active",
+            "Частота данных": "Data update rate", "Критический AoA": "Critical AoA",
+            "ПРЕДУПРЕЖДЕНИЯ HUD": "HUD WARNINGS", "Скорость": "Speed", "Перегрузка": "G-load",
+            "Топливо": "Fuel", "Сваливание": "Stall", "Раннее предупреждение": "Early warning",
+            "Критическое топливо": "Critical fuel", "ЗВУКОВЫЕ ПРЕДУПРЕЖДЕНИЯ": "AUDIO WARNINGS",
+            "Включить звук": "Enable sound", "Громкость": "Volume", "Пауза между сигналами": "Alert repeat delay",
+            "Предупреждать о топливе за": "Warn about fuel with", "Прослушать": "Play",
+            "Свой WAV…": "Custom WAV…", "Стандарт": "Default", "Стандартные сигналы": "Default sounds",
+            "Профили": "Profiles", "ГОТОВЫЕ И СОХРАНЁННЫЕ МАКЕТЫ": "BUILT-IN AND SAVED LAYOUTS",
+            "Сохранить как…": "Save as…", "Импорт…": "Import…", "Экспорт…": "Export…",
+            "Сохранить изменения": "Save changes", "Удалить конфиг": "Delete config",
+            "Восстановить выбранный стандартный макет": "Restore selected built-in layout",
+            "ТЕСТ БЕЗ ЗАПУСКА ИГРЫ": "DEMO WITHOUT THE GAME", "Обычный полёт": "Normal flight",
+            "Превышение скорости": "Overspeed", "Высокая перегрузка": "High G-load", "Мало топлива": "Low fuel",
+            "Ракеты: направление угрозы недоступно в используемом локальном API.": "Missile direction is not available in the local API.",
+            "Данные вертолёта появятся после входа в бой": "Helicopter data appears after entering battle",
+            "Применить макет вертолёта": "Apply helicopter layout", "Добавить в группу": "Add to group",
+            "ВЕРТОЛЁТ": "HELICOPTER", "Показать HUD": "Show HUD", "Перемещать текст мышью": "Move text with mouse",
+            "Открыть редактор": "Open editor", "Готово · Esc": "Done · Esc", "Клавиши": "Hotkeys",
+            "Оформление программы": "App appearance", "ОФОРМЛЕНИЕ ПРОГРАММЫ": "APP APPEARANCE",
+            "Пределы самолёта": "Aircraft limits", "Автоматические пределы из базы": "Automatic limits from database",
             "Шрифт": "Font", "Размер": "Size", "Название": "Name", "Отображение": "Display",
             "Дополнительные настройки": "Additional settings", "Подписи": "Labels",
             "Название группы": "Group title", "Жирный": "Bold", "Тень текста": "Text shadow",
@@ -1809,7 +1862,7 @@ class MainWindow(FeatureControls, QMainWindow):
             "Цвет обводки": "Outline color", "Убрать показатель": "Remove metric",
             "Удалить группу": "Delete group", "Пределы самолёта": "Aircraft limits",
             "Принудительно обновить данные API": "Force refresh API data",
-            "Версия программы: 1.0.4": "Application version: 1.0.4",
+            "Версия программы: 1.0.5": "Application version: 1.0.5",
         }
         for widget in self.findChildren(QWidget):
             original = widget.property("wt_ru_text")
@@ -1838,6 +1891,8 @@ class MainWindow(FeatureControls, QMainWindow):
             self.language_box.blockSignals(False)
         if save:
             self.settings.save()
+        if hasattr(self, "palette"):
+            self.refresh_palette()
 
     def check_for_updates(self, silent=False):
         if self.update_checker and self.update_checker.isRunning():

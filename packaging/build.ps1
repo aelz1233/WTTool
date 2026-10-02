@@ -28,4 +28,4 @@ $compiler = Join-Path $projectRoot '.tools\inno\ISCC.exe'
 if (!(Test-Path -LiteralPath $compiler)) { throw 'Install Inno Setup 6 in .tools\inno first' }
 & $compiler packaging\installer.iss
 if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
-Get-FileHash 'release\WT-Flight-Setup-1.0.4.exe' -Algorithm SHA256 | Format-List
+Get-FileHash 'release\WT-Flight-Setup-1.0.5.exe' -Algorithm SHA256 | Format-List
