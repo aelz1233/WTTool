@@ -27,6 +27,7 @@ The latest Windows installer is available on the [GitHub Releases page](https://
 - Отдельная вкладка для вертолётов с полётными, двигательными и роторными полями.
 - Темы интерфейса: Graphite, Cockpit, Arctic, Dark и Rose.
 - Наборы оформления текста HUD, включая стиль War Thunder и WTRTI.
+- Проверка новых релизов GitHub при запуске и вручную; флажок «Больше не напоминать» сохраняется для выбранной версии.
 
 ## Запуск из исходников
 
