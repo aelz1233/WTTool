@@ -4,6 +4,14 @@
 
 Проект сделан под компактное окно редактора и игровой HUD в стиле WTRTI: короткие подписи, тонкий текст с обводкой, свободное расположение групп, готовые пресеты, свои профили, горячие клавиши и настраиваемые предупреждения.
 
+## English
+
+WT Flight Assistant is a configurable War Thunder flight HUD and overlay editor for Windows. It connects to the game's local API at `127.0.0.1:8111`, reads `/state` and `/indicators`, and displays selected telemetry above the game without modifying the game files, memory, or network traffic.
+
+Features include a WTRTI-inspired HUD editor with drag and drop, multi-selection, custom groups, aircraft and helicopter layouts, multi-engine telemetry, aircraft limits, configurable warning thresholds, flashing yellow/red alerts, custom WAV sounds, themes, hotkeys, profiles, and a local aircraft database. The app also checks the GitHub releases page for updates and lets you dismiss a specific version reminder.
+
+The latest Windows installer is available on the [GitHub Releases page](https://github.com/aelz1233/WTTool/releases). War Thunder must run in windowed or borderless-window mode for the external overlay to be visible.
+
 ## Возможности
 
 - Автоопределение игры через локальный API War Thunder.

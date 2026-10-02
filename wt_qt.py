@@ -9,7 +9,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 
 from PySide6.QtCore import QMimeData, QPoint, QPointF, QRect, QSize, Qt, QThread, Signal, QSaveFile, QIODevice, QEvent, QTimer
 from PySide6.QtGui import (QBrush, QColor, QDrag, QFont, QFontMetrics, QIcon, QPainter,
@@ -21,7 +21,9 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox,
                                QMainWindow, QMenu, QMessageBox, QPushButton,
                                QScrollArea, QSlider, QSpinBox, QSystemTrayIcon,
                                QVBoxLayout, QWidget, QTabWidget, QFormLayout, QKeySequenceEdit,
-                               QFileDialog, QTreeWidget, QTreeWidgetItem, QHeaderView)
+                           QFileDialog, QTreeWidget, QTreeWidgetItem, QHeaderView)
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices
 
 from wt_core import (CONFIG_PATH, METRICS, available_metrics, evaluate,
                      metric_help, metric_label, metric_value, number, ENGINE_FIELDS,
@@ -43,6 +45,9 @@ TEAL = "#57e0c3"
 ORANGE = "#ffbd5a"
 RED = "#ff6879"
 HUD_GREEN = "#64be98"
+APP_VERSION = "1.0.3"
+GITHUB_REPO = "aelz1233/WTTool"
+GITHUB_RELEASES = f"https://github.com/{GITHUB_REPO}/releases"
 
 
 def alert_level(tone, caution_ratio=.9):
@@ -263,6 +268,30 @@ class DatabaseUpdater(QThread):
         try:
             self.completed.emit(download_database(self.cache_dir, self.version), "")
         except (OSError, ValueError) as error:
+            self.completed.emit(None, str(error))
+
+
+class UpdateChecker(QThread):
+    """Check the public GitHub release feed without blocking the editor."""
+    completed = Signal(object, str)
+
+    def run(self):
+        try:
+            request = Request(
+                f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+                headers={"User-Agent": "WT-Flight-Assistant", "Accept": "application/vnd.github+json"},
+            )
+            with urlopen(request, timeout=5) as response:
+                payload = json.load(response)
+            if not isinstance(payload, dict):
+                raise ValueError("GitHub вернул неожиданный ответ")
+            tag = str(payload.get("tag_name", "")).strip()
+            version = tag.lstrip("vV")
+            asset = next((item.get("browser_download_url") for item in payload.get("assets", [])
+                          if str(item.get("name", "")).lower().endswith(".exe")), "")
+            self.completed.emit({"tag": tag, "version": version, "url": payload.get("html_url", GITHUB_RELEASES),
+                                 "asset": asset, "name": payload.get("name", tag)}, "")
+        except (OSError, ValueError, KeyError, TypeError) as error:
             self.completed.emit(None, str(error))
 
 
@@ -1172,6 +1201,7 @@ class MainWindow(FeatureControls, QMainWindow):
         self.init_feature_state()
         self.database = AircraftDatabase.load(CONFIG_PATH.parent)
         self.db_updater = None
+        self.update_checker = None
         self.database_status = "локальная копия"
         self.aircraft = "default"
         self.sample = ("offline", {}, {})
@@ -1185,6 +1215,7 @@ class MainWindow(FeatureControls, QMainWindow):
         self.resize(720, 560)
         self.setMinimumSize(640, 520)
         self.build_ui()
+        self.set_language(self.settings.data.get("language", "ru"), save=False)
         self.set_theme(self.settings.data.get("theme", "graphite"))
         self.install_editor_shortcuts()
         QApplication.instance().installEventFilter(self)
@@ -1217,6 +1248,8 @@ class MainWindow(FeatureControls, QMainWindow):
         self.update_aircraft_panel()
         if start_background_updates and time.time() - self.settings.data.get("database_checked_at", 0) > 86400:
             self.check_database_update()
+        if start_background_updates and not self.settings.data.get("updates_disabled"):
+            self.check_for_updates(silent=True)
 
     def groups(self):
         return self.settings.groups(self.aircraft)
@@ -1417,6 +1450,10 @@ class MainWindow(FeatureControls, QMainWindow):
         self.demo_button.setCheckable(True)
         self.demo_button.clicked.connect(self.set_demo_mode)
         header.addWidget(self.demo_button)
+        self.update_button = QPushButton("Обновить")
+        self.update_button.setToolTip("Проверить новую версию программы на GitHub")
+        self.update_button.clicked.connect(self.check_for_updates)
+        header.addWidget(self.update_button)
         self.status = self.text("ОЖИДАНИЕ ИГРЫ", "status")
         self.status.setProperty("offline", True)
         header.addWidget(self.status)
@@ -1717,6 +1754,23 @@ class MainWindow(FeatureControls, QMainWindow):
         local_help.setWordWrap(True)
         prefs.addWidget(local_help)
         self.add_feature_ui(prefs)
+        language_row = QHBoxLayout()
+        language_row.addWidget(self.text("Язык интерфейса", "muted"))
+        self.language_box = QComboBox()
+        self.language_box.addItem("Русский", "ru")
+        self.language_box.addItem("English", "en")
+        self.language_box.currentIndexChanged.connect(lambda: self.set_language(self.language_box.currentData()))
+        language_row.addWidget(self.language_box)
+        language_row.addStretch()
+        prefs.addLayout(language_row)
+        updates_row = QHBoxLayout()
+        self.update_check_button = QPushButton("Проверить обновления")
+        self.update_check_button.clicked.connect(self.check_for_updates)
+        updates_row.addWidget(self.update_check_button)
+        self.update_status = self.text(f"Версия программы: {APP_VERSION}", "muted")
+        updates_row.addWidget(self.update_status)
+        updates_row.addStretch()
+        prefs.addLayout(updates_row)
         self.main_preset_box.currentIndexChanged.connect(self.sync_main_preset)
         self.preset_box.currentIndexChanged.connect(self.sync_main_preset)
         self.refresh_presets()
@@ -1733,6 +1787,110 @@ class MainWindow(FeatureControls, QMainWindow):
         start.clicked.connect(self.show_hud)
         footer.addWidget(start)
         outer.addLayout(footer)
+
+    def set_language(self, language="ru", save=True):
+        language = language if language in ("ru", "en") else "ru"
+        self.settings.data["language"] = language
+        translations = {
+            "ОЖИДАНИЕ ИГРЫ": "WAITING FOR GAME", "Тест": "Demo", "Обновить": "Update",
+            "Расположение": "Layout", "Вид текста": "Text style", "Самолёт": "Aircraft",
+            "Вертолёт": "Helicopter", "Настройки": "Settings", "ПОКАЗАТЕЛИ": "METRICS",
+            "Поиск · IAS, топливо…": "Search · IAS, fuel…", "Данные появятся в бою": "Data appears in battle",
+            "ПРОФИЛЬ: ОБЩИЙ": "PROFILE: DEFAULT", "Макет": "Layout", "Применить": "Apply",
+            "Сохранить": "Save", "Удалить": "Delete", "Быстрое меню": "Quick menu",
+            "Показать HUD": "Show HUD", "Оформление выбранного текста": "Style selected text",
+            "＋ Группа": "＋ Group", "ОФОРМЛЕНИЕ ПРОГРАММЫ": "APP APPEARANCE",
+            "ГЛОБАЛЬНЫЕ КЛАВИШИ": "GLOBAL HOTKEYS", "Язык интерфейса": "Interface language",
+            "Проверить обновления": "Check for updates", "ОБНОВЛЕНИЯ": "UPDATES",
+            "Шрифт": "Font", "Размер": "Size", "Название": "Name", "Отображение": "Display",
+            "Дополнительные настройки": "Additional settings", "Подписи": "Labels",
+            "Название группы": "Group title", "Жирный": "Bold", "Тень текста": "Text shadow",
+            "Обводка": "Outline", "Цвет значений": "Value color", "Цвет подписей": "Label color",
+            "Цвет обводки": "Outline color", "Убрать показатель": "Remove metric",
+            "Удалить группу": "Delete group", "Пределы самолёта": "Aircraft limits",
+            "Принудительно обновить данные API": "Force refresh API data",
+            "Версия программы: 1.0.3": "Application version: 1.0.3",
+        }
+        for widget in self.findChildren(QWidget):
+            original = widget.property("wt_ru_text")
+            if original is None:
+                if isinstance(widget, (QLabel, QPushButton, QCheckBox)) and widget.text():
+                    original = widget.text()
+                    widget.setProperty("wt_ru_text", original)
+                elif isinstance(widget, QLineEdit) and widget.placeholderText():
+                    original = widget.placeholderText()
+                    widget.setProperty("wt_ru_placeholder", original)
+            if original is not None and isinstance(widget, (QLabel, QPushButton, QCheckBox)):
+                widget.setText(original if language == "ru" else translations.get(original, original))
+            placeholder = widget.property("wt_ru_placeholder")
+            if placeholder is not None and isinstance(widget, QLineEdit):
+                widget.setPlaceholderText(placeholder if language == "ru" else translations.get(placeholder, placeholder))
+        tab_translations = {"Расположение": "Layout", "Вид текста": "Text style", "Самолёт": "Aircraft",
+                            "Вертолёт": "Helicopter", "Настройки": "Settings"}
+        for index in range(self.tabs.count()):
+            ru = self.tabs.tabBar().tabData(index) or self.tabs.tabText(index)
+            if self.tabs.tabBar().tabData(index) is None:
+                self.tabs.tabBar().setTabData(index, ru)
+            self.tabs.setTabText(index, ru if language == "ru" else tab_translations.get(ru, ru))
+        if hasattr(self, "language_box"):
+            self.language_box.blockSignals(True)
+            self.language_box.setCurrentIndex(self.language_box.findData(language))
+            self.language_box.blockSignals(False)
+        if save:
+            self.settings.save()
+
+    def check_for_updates(self, silent=False):
+        if self.update_checker and self.update_checker.isRunning():
+            return
+        if not silent:
+            self.update_status.setText("Проверка GitHub…")
+        self.update_button.setEnabled(False)
+        if hasattr(self, "update_check_button"):
+            self.update_check_button.setEnabled(False)
+        self.update_checker = UpdateChecker()
+        self.update_checker.completed.connect(lambda info, error, quiet=silent: self.on_update_checked(info, error, quiet))
+        self.update_checker.start()
+
+    @staticmethod
+    def _version_tuple(value):
+        try:
+            return tuple(int(part) for part in str(value).lstrip("vV").split(".")[:3])
+        except (TypeError, ValueError):
+            return (0, 0, 0)
+
+    def on_update_checked(self, info, error, silent=False):
+        self.update_button.setEnabled(True)
+        if hasattr(self, "update_check_button"):
+            self.update_check_button.setEnabled(True)
+        if error or not info:
+            if not silent:
+                self.update_status.setText("Не удалось проверить обновления")
+                QMessageBox.warning(self, "Проверка обновлений", "GitHub недоступен. Проверьте интернет-соединение.")
+            return
+        latest = info.get("version", "")
+        if self._version_tuple(latest) <= self._version_tuple(APP_VERSION):
+            self.update_status.setText(f"Установлена последняя версия · {APP_VERSION}")
+            if not silent:
+                QMessageBox.information(self, "Обновления", f"У вас уже последняя версия {APP_VERSION}.")
+            return
+        self.update_status.setText(f"Доступна версия {latest}")
+        if self.settings.data.get("updates_skip_version") == latest:
+            return
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Information)
+        box.setWindowTitle("Доступно обновление")
+        box.setText(f"Доступна новая версия WT Flight: {latest}\nТекущая версия: {APP_VERSION}")
+        box.setInformativeText("Скачайте установщик из GitHub. Он обновит программу в папке D:\\WT Flight.")
+        skip = QCheckBox("Больше не напоминать об этой версии", box)
+        box.setCheckBox(skip)
+        download = box.addButton("Скачать установщик", QMessageBox.AcceptRole)
+        box.addButton("Позже", QMessageBox.RejectRole)
+        box.exec()
+        if skip.isChecked():
+            self.settings.data["updates_skip_version"] = latest
+            self.settings.save()
+        if box.clickedButton() is download:
+            QDesktopServices.openUrl(QUrl(info.get("asset") or info.get("url") or GITHUB_RELEASES))
 
     def select_from_combo(self):
         self.select_group(self.group_selector.currentData())
