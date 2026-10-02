@@ -43,6 +43,7 @@ from wtflight.core.models import HudGroup
 from wtflight.core.settings import Settings as _Settings
 from wtflight.ui.tabs import AircraftTab
 from wtflight.services.telemetry import Telemetry
+from wtflight import __version__
 
 
 API = "http://127.0.0.1:8111"
@@ -53,7 +54,7 @@ TEAL = "#57e0c3"
 ORANGE = "#ffbd5a"
 RED = "#ff6879"
 HUD_GREEN = "#64be98"
-APP_VERSION = "1.0.8"
+APP_VERSION = __version__
 GITHUB_REPO = "aelz1233/WTTool"
 GITHUB_RELEASES = f"https://github.com/{GITHUB_REPO}/releases"
 
