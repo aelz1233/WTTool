@@ -2079,7 +2079,8 @@ class MainWindow(FeatureControls, QMainWindow):
         self.background_dim.setValue(int(preview.get("dimming", 22)))
         self.grid_action.setChecked(bool(preview.get("grid", False)))
         path = preview.get("image")
-        default = Path(__file__).with_name("data") / "default_hud_background.png"
+        packaged_default = Path(__file__).with_name("wtflight") / "resources" / "default_hud_background.png"
+        default = packaged_default if packaged_default.exists() else Path(__file__).with_name("data") / "default_hud_background.png"
         if path is None and default.is_file():
             self.load_background(str(default))
             return

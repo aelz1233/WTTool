@@ -14,7 +14,8 @@ from urllib.request import Request, urlopen
 
 from wt_core import number
 
-BUNDLED = Path(__file__).parent / "data" / "flight_models"
+_PACKAGE_BUNDLED = Path(__file__).parent / "wtflight" / "resources" / "flight_models"
+BUNDLED = _PACKAGE_BUNDLED if _PACKAGE_BUNDLED.exists() else Path(__file__).parent / "data" / "flight_models"
 UPSTREAM = "https://raw.githubusercontent.com/SpaceCapo/warthunder-byo-fm/main/"
 
 
