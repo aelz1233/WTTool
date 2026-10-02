@@ -17,6 +17,7 @@ audit_artifacts/
 *.bak
 *.user
 *.local
+qt_*_preview.png
 
 wt_assistant_config.json
 
