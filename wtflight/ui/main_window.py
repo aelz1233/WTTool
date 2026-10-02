@@ -85,12 +85,13 @@ def flashing_alert_color(level, normal, now=None):
 
 
 def installed_hud_fonts():
-    """Prefer familiar HUD fonts, but only offer families installed on this PC."""
+    """Return stable HUD choices, allowing Qt to fall back when unavailable."""
     preferred = ["Consolas", "Lucida Console", "Bahnschrift", "Courier New", "Segoe UI",
                  "Arial", "Tahoma", "Verdana", "Impact"]
-    installed = set(QFontDatabase.families())
-    result = [name for name in preferred if name in installed]
-    return result or ["Consolas"]
+    # Keep the named HUD presets visible even on machines without a particular
+    # family. QFont will use a platform fallback, while saved configs remain
+    # portable and the user can still choose the WTRTI-style family by name.
+    return preferred
 
 
 def fill_hud_font_box(combo):
