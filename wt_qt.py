@@ -5,6 +5,9 @@ from __future__ import annotations
 import copy
 from html import escape
 import json
+import os
+import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -21,7 +24,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox,
                                QMainWindow, QMenu, QMessageBox, QPushButton,
                                QScrollArea, QSlider, QSpinBox, QSystemTrayIcon,
                                QVBoxLayout, QWidget, QTabWidget, QFormLayout, QKeySequenceEdit,
-                           QFileDialog, QTreeWidget, QTreeWidgetItem, QHeaderView)
+                               QFileDialog, QTreeWidget, QTreeWidgetItem, QHeaderView, QProgressDialog)
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 
@@ -45,7 +48,7 @@ TEAL = "#57e0c3"
 ORANGE = "#ffbd5a"
 RED = "#ff6879"
 HUD_GREEN = "#64be98"
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.6"
 GITHUB_REPO = "aelz1233/WTTool"
 GITHUB_RELEASES = f"https://github.com/{GITHUB_REPO}/releases"
 
@@ -293,6 +296,35 @@ class UpdateChecker(QThread):
                                  "asset": asset, "name": payload.get("name", tag)}, "")
         except (OSError, ValueError, KeyError, TypeError) as error:
             self.completed.emit(None, str(error))
+
+
+class InstallerDownloader(QThread):
+    progress = Signal(int)
+    completed = Signal(str, str)
+
+    def __init__(self, url, filename):
+        super().__init__()
+        self.url, self.filename = url, filename
+
+    def run(self):
+        try:
+            target = Path(tempfile.gettempdir()) / self.filename
+            request = Request(self.url, headers={"User-Agent": "WT-Flight-Assistant"})
+            with urlopen(request, timeout=20) as response:
+                total = int(response.headers.get("Content-Length", "0") or 0)
+                received = 0
+                with target.open("wb") as output:
+                    while True:
+                        chunk = response.read(1024 * 256)
+                        if not chunk:
+                            break
+                        output.write(chunk)
+                        received += len(chunk)
+                        if total:
+                            self.progress.emit(min(100, int(received * 100 / total)))
+            self.completed.emit(str(target), "")
+        except (OSError, ValueError) as error:
+            self.completed.emit("", str(error))
 
 
 def warning_for(sample, limits):
@@ -1220,6 +1252,8 @@ class MainWindow(FeatureControls, QMainWindow):
         self.database = AircraftDatabase.load(CONFIG_PATH.parent)
         self.db_updater = None
         self.update_checker = None
+        self.installer_downloader = None
+        self.update_progress = None
         self.database_status = "локальная копия"
         self.aircraft = "default"
         self.sample = ("offline", {}, {})
@@ -1814,6 +1848,7 @@ class MainWindow(FeatureControls, QMainWindow):
         QApplication.instance().setProperty("language", language)
         translations = {
             "ОЖИДАНИЕ ИГРЫ": "WAITING FOR GAME", "Тест": "Demo", "Обновить": "Update",
+            "Скачать и установить": "Download and install",
             "Подключение к игре автоматически": "Connecting to the game automatically",
             "Самолёт определится в бою": "Aircraft will be detected in battle",
             "Модель ещё не получена из игры": "The game has not provided an aircraft model yet",
@@ -1862,7 +1897,7 @@ class MainWindow(FeatureControls, QMainWindow):
             "Цвет обводки": "Outline color", "Убрать показатель": "Remove metric",
             "Удалить группу": "Delete group", "Пределы самолёта": "Aircraft limits",
             "Принудительно обновить данные API": "Force refresh API data",
-            "Версия программы: 1.0.5": "Application version: 1.0.5",
+            "Версия программы: 1.0.6": "Application version: 1.0.6",
         }
         for widget in self.findChildren(QWidget):
             original = widget.property("wt_ru_text")
@@ -1938,14 +1973,48 @@ class MainWindow(FeatureControls, QMainWindow):
         box.setInformativeText("Скачайте установщик из GitHub. Он обновит программу в папке D:\\WT Flight.")
         skip = QCheckBox("Больше не напоминать об этой версии", box)
         box.setCheckBox(skip)
-        download = box.addButton("Скачать установщик", QMessageBox.AcceptRole)
+        download = box.addButton("Скачать и установить", QMessageBox.AcceptRole)
         box.addButton("Позже", QMessageBox.RejectRole)
         box.exec()
         if skip.isChecked():
             self.settings.data["updates_skip_version"] = latest
             self.settings.save()
         if box.clickedButton() is download:
-            QDesktopServices.openUrl(QUrl(info.get("asset") or info.get("url") or GITHUB_RELEASES))
+            self.download_and_install(info)
+
+    def download_and_install(self, info):
+        asset = info.get("asset")
+        if not asset:
+            QDesktopServices.openUrl(QUrl(info.get("url") or GITHUB_RELEASES))
+            return
+        filename = f"WT-Flight-Setup-{info.get('version', 'latest')}.exe"
+        self.update_progress = QProgressDialog("Скачивание установщика…", "Отмена", 0, 100, self)
+        self.update_progress.setWindowTitle("Обновление WT Flight")
+        self.update_progress.setAutoClose(False)
+        self.update_progress.setMinimumDuration(0)
+        self.update_progress.show()
+        self.installer_downloader = InstallerDownloader(asset, filename)
+        self.installer_downloader.progress.connect(self.update_progress.setValue)
+        self.installer_downloader.completed.connect(self.on_installer_downloaded)
+        self.update_progress.canceled.connect(self.installer_downloader.terminate)
+        self.installer_downloader.start()
+
+    def on_installer_downloaded(self, path, error):
+        if self.update_progress:
+            self.update_progress.close()
+        if error or not path or not Path(path).is_file():
+            QMessageBox.warning(self, "Обновление", "Не удалось скачать установщик: " + (error or "файл не найден"))
+            return
+        answer = QMessageBox.question(
+            self, "Установить обновление", "Установщик скачан. Закрыть WT Flight и запустить установку сейчас?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            subprocess.Popen([path], cwd=str(Path(path).parent))
+            QTimer.singleShot(250, QApplication.instance().quit)
+        except OSError as error:
+            QMessageBox.warning(self, "Обновление", "Не удалось запустить установщик: " + str(error))
 
     def select_from_combo(self):
         self.select_group(self.group_selector.currentData())
