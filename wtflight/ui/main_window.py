@@ -42,6 +42,7 @@ from wt_controls import SteppedSpinBox
 from wtflight.core.models import HudGroup
 from wtflight.core.settings import Settings as _Settings
 from wtflight.ui.tabs import AircraftTab
+from wtflight.services.telemetry import Telemetry
 
 
 API = "http://127.0.0.1:8111"
@@ -162,43 +163,6 @@ def reference_profile(kind="combat"):
 
 def default_profile():
     return reference_profile("combat")
-
-
-class Telemetry(QThread):
-    sample = Signal(str, dict, dict)
-
-    def __init__(self, interval=0.1):
-        super().__init__()
-        self.stop_event = threading.Event()
-        self.interval = max(0.05, min(0.5, float(interval)))
-
-    def set_interval(self, interval):
-        self.interval = max(0.05, min(0.5, float(interval)))
-
-    def run(self):
-        while not self.stop_event.is_set():
-            start = time.monotonic()
-            try:
-                with urlopen(API + "/state", timeout=0.25) as response:
-                    state = json.load(response)
-                if not isinstance(state, dict) or not state.get("valid"):
-                    self.sample.emit("waiting", {}, {})
-                else:
-                    try:
-                        with urlopen(API + "/indicators", timeout=0.25) as response:
-                            indicators = json.load(response)
-                        if not isinstance(indicators, dict) or not indicators.get("valid"):
-                            indicators = {}
-                    except (OSError, ValueError):
-                        indicators = {}
-                    self.sample.emit("live", state, indicators)
-            except (OSError, ValueError):
-                self.sample.emit("offline", {}, {})
-            self.stop_event.wait(max(0, self.interval - (time.monotonic() - start)))
-
-    def stop(self):
-        self.stop_event.set()
-        self.wait(2500)
 
 
 class DatabaseUpdater(QThread):
