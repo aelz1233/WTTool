@@ -40,6 +40,8 @@ from wt_features import metric_risk, add_margins
 from wt_feature_ui import FeatureControls
 from wt_controls import SteppedSpinBox
 from wtflight.core.models import HudGroup
+from wtflight.core.settings import Settings as _Settings
+from wtflight.ui.tabs import AircraftTab
 
 
 API = "http://127.0.0.1:8111"
@@ -53,6 +55,13 @@ HUD_GREEN = "#64be98"
 APP_VERSION = "1.0.8"
 GITHUB_REPO = "aelz1233/WTTool"
 GITHUB_RELEASES = f"https://github.com/{GITHUB_REPO}/releases"
+
+
+class Settings(_Settings):
+    """Compatibility facade whose default path follows the legacy module global."""
+
+    def __init__(self, path=None, **kwargs):
+        super().__init__(path=CONFIG_PATH if path is None else path, **kwargs)
 
 
 def alert_level(tone, caution_ratio=.9):
@@ -153,71 +162,6 @@ def reference_profile(kind="combat"):
 
 def default_profile():
     return reference_profile("combat")
-
-
-class Settings:
-    def __init__(self):
-        self.data = {"version": 4, "profiles": {"default": default_profile()},
-                     "limits": {}, "sound": True, "menu_hotkey": "Ins"}
-        try:
-            saved = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return
-        if not isinstance(saved, dict):
-            return
-        if isinstance(saved.get("profiles"), dict):
-            self.data.update(saved)
-        elif isinstance(saved.get("groups"), list) and saved["groups"]:
-            groups = []
-            for index, old in enumerate(saved["groups"]):
-                if not isinstance(old, dict) or not old.get("metrics"):
-                    continue
-                group = new_group(old["metrics"][0])
-                group.update(id=old.get("id", group["id"]), title=old.get("title", "БЛОК"),
-                             metrics=old["metrics"],
-                             x=0.04 if index % 2 == 0 else 0.53,
-                             y=0.14 + (index // 2) * 0.3,
-                             style=old.get("style", "text"),
-                             size=old.get("font_size", 20),
-                             labels=old.get("show_labels", True),
-                             title_visible=old.get("show_title", False),
-                             color=old.get("color", INK),
-                             accent=old.get("accent", TEAL))
-                groups.append(group)
-            if groups:
-                self.data["profiles"]["default"] = groups
-            self.data["limits"]["default"] = saved.get("limits", {})
-            self.data["sound"] = bool(saved.get("sound", True))
-        # Preserve layout and colors; migrate only the old typography to the new HUD style.
-        for groups in self.data["profiles"].values():
-            for group in groups:
-                group.pop("opacity", None)
-        if saved.get("version", 0) < 4:
-            for groups in self.data["profiles"].values():
-                for group in groups:
-                    group.update(font_family="Consolas", bold=True, shadow=True,
-                                 compact_labels=True, spacing=1)
-        self.data["version"] = 4
-
-    def groups(self, aircraft):
-        profiles = self.data["profiles"]
-        if aircraft not in profiles:
-            profiles[aircraft] = copy.deepcopy(profiles.get("default", default_profile()))
-            for group in profiles[aircraft]:
-                group["id"] = uuid.uuid4().hex[:10]
-            self.save()
-        return profiles[aircraft]
-
-    def limits(self, aircraft):
-        return self.data.setdefault("limits", {}).get(aircraft, {})
-
-    def save(self):
-        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        temp = CONFIG_PATH.with_suffix(".tmp")
-        temp.write_text(json.dumps(self.data, ensure_ascii=False, indent=2), encoding="utf-8")
-        temp.replace(CONFIG_PATH)
-        if getattr(self, "on_saved", None):
-            self.on_saved(self.data["profiles"])
 
 
 class Telemetry(QThread):
@@ -1752,43 +1696,7 @@ class MainWindow(FeatureControls, QMainWindow):
         details_layout.addLayout(actions)
         rl.addStretch()
 
-        aircraft_page = QWidget()
-        self.tabs.addTab(aircraft_page, "Самолёт")
-        aircraft_layout = QVBoxLayout(aircraft_page)
-        aircraft_layout.setContentsMargins(4, 14, 4, 4)
-        self.aircraft_name = self.text("Самолёт определится в бою", "headline")
-        self.aircraft_name.setWordWrap(True)
-        aircraft_layout.addWidget(self.aircraft_name)
-        self.aircraft_details = self.text("", "muted")
-        self.aircraft_details.setWordWrap(True)
-        aircraft_layout.addWidget(self.aircraft_details)
-        limits_form = QFormLayout()
-        limits_form.setVerticalSpacing(10)
-        limits_form.setHorizontalSpacing(24)
-        self.aircraft_values = {}
-        for key, title in (("ias_kmh", "Предельная IAS"), ("mach", "Предельный Mach"),
-                           ("positive_g", "Предел +G · оценка"), ("negative_g", "Предел −G · оценка"),
-                           ("gear_kmh", "Скорость выпуска шасси"),
-                           ("flaps_landing_kmh", "Посадочные закрылки")):
-            value = self.text("—")
-            self.aircraft_values[key] = value
-            limits_form.addRow(title, value)
-        aircraft_layout.addLayout(limits_form)
-        self.limit_note = self.text("", "muted")
-        self.limit_note.setWordWrap(True)
-        aircraft_layout.addWidget(self.limit_note)
-        aircraft_layout.addStretch()
-        self.database_note = self.text("", "muted")
-        self.database_note.setWordWrap(True)
-        aircraft_layout.addWidget(self.database_note)
-        db_actions = QHBoxLayout()
-        self.database_update_button = QPushButton("Обновить базу")
-        self.database_update_button.clicked.connect(self.check_database_update)
-        db_actions.addWidget(self.database_update_button)
-        custom_limits = QPushButton("Свои пороги")
-        custom_limits.clicked.connect(self.edit_limits)
-        db_actions.addWidget(custom_limits)
-        aircraft_layout.addLayout(db_actions)
+        AircraftTab(self, self.tabs)
 
         self.build_helicopter_tab()
 

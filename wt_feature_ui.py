@@ -1,2 +1,4 @@
-from wtflight.ui.feature_controls import *  # noqa: F401,F403
+import sys
+from wtflight.ui import feature_controls as _implementation
 
+sys.modules[__name__] = _implementation
