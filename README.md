@@ -8,7 +8,7 @@
 
 ## Скачать
 
-**[Скачать WT Flight Assistant v1.0.11](https://github.com/aelz1233/WTTool/releases/download/v1.0.11/WT-Flight-Setup-1.0.11.exe)** · [Все релизы](https://github.com/aelz1233/WTTool/releases)
+**[Скачать WT Flight Assistant v1.0.12](https://github.com/aelz1233/WTTool/releases/download/v1.0.12/WT-Flight-Setup-1.0.12.exe)** · [Все релизы](https://github.com/aelz1233/WTTool/releases)
 
 Установщик создаёт папку `D:\WT Flight`, ярлык на рабочем столе и необходимые каталоги. В программе есть проверка обновлений и установка новой версии прямо из приложения.
 

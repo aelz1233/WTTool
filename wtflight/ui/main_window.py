@@ -121,6 +121,127 @@ def hud_label(metric_id):
     return HUD_LABELS.get(metric_id, metric_label(metric_id))
 
 
+# The core metric catalogue deliberately keeps Russian source text for data
+# exports and backwards-compatible profiles.  The desktop presentation uses
+# these small English views when the interface language is switched, including
+# the live HUD, metric inspector and hover descriptions.
+METRIC_LABELS_EN = {
+    "ias": "IAS · Indicated", "tas": "TAS · True airspeed", "mach": "MACH · Mach number",
+    "altitude": "ALT · Altitude", "g": "LDF · G-load", "climb": "CLMB · Climb rate",
+    "aoa": "AOA · Angle of attack", "aos": "AOS · Sideslip", "fuel": "FUEL · Fuel",
+    "fuel_percent": "FUEL · Percent", "fuel_time": "FUEL · Remaining", "fuel_flow": "FUEL · Flow",
+    "ias_margin": "IAS · Margin", "mach_margin": "MACH · Margin", "g_margin_pos": "G · Positive margin",
+    "g_margin_neg": "G · Negative margin", "throttle": "THR · All engines", "rpm": "RPM · All engines",
+    "oil_temp": "OIL · All engines", "water_temp": "WTR · Cooling", "power": "PWR · All engines",
+    "thrust": "TRST · All engines", "manifold": "MAP · All engines", "mixture": "MIX · All engines",
+    "radiator": "RAD · All engines", "pitch": "PITCH · All engines", "efficiency": "EFF · All engines",
+    "flaps": "FLAPS · Position", "gear": "GEAR · Position", "airbrake": "BRK · Airbrake",
+    "heading": "HDG · Heading", "limit_ias": "IAS · Limit", "limit_mach": "MACH · Limit",
+    "limit_pos_g": "G · Positive limit", "limit_neg_g": "G · Negative limit",
+    "limit_gear": "GEAR · Limit", "limit_flaps": "FLAPS · Limit", "warning": "Warnings",
+}
+
+ENGINE_LABELS_EN = {
+    "throttle": "Throttle", "rpm": "RPM", "oil_temp": "Oil temperature",
+    "water_temp": "Coolant temperature", "power": "Power", "thrust": "Thrust",
+    "manifold": "Manifold pressure", "mixture": "Mixture", "radiator": "Radiator",
+    "pitch": "Propeller pitch", "efficiency": "Propeller efficiency",
+}
+
+METRIC_HELP_EN = {
+    "ias": "Indicated airspeed relative to the airflow. Useful for stall and structural speed limits.",
+    "tas": "True airspeed through the air. Useful for judging movement and energy retention.",
+    "mach": "Aircraft speed divided by the speed of sound. Compressibility effects grow at high values.",
+    "altitude": "Altitude above sea level reported by the game.",
+    "g": "Current load factor. Helps monitor airframe load and pilot blackout risk.",
+    "climb": "Vertical speed: climbing or descending in metres per second.",
+    "aoa": "Angle between the aircraft axis and airflow. A high value can lead to a stall.",
+    "aos": "Sideslip angle relative to the airflow.",
+    "fuel": "Remaining fuel mass.", "fuel_percent": "Estimated fuel remaining as a percentage of the starting load.",
+    "fuel_time": "Estimated time until the fuel is exhausted at the current rate.",
+    "fuel_flow": "Estimated fuel flow in kilograms per minute.",
+    "ias_margin": "Difference between current IAS and the estimated speed limit. A negative margin means an overspeed.",
+    "mach_margin": "Difference between current Mach and the estimated limit.",
+    "g_margin_pos": "Estimated margin to the positive G limit.", "g_margin_neg": "Estimated margin to the negative G limit.",
+    "throttle": "Throttle position for each available engine.", "rpm": "RPM for each available engine.",
+    "oil_temp": "Oil temperature for each available engine.", "water_temp": "Coolant temperature when available.",
+    "power": "Estimated power for each engine when reported by the game.",
+    "thrust": "Current thrust for each engine.", "manifold": "Manifold pressure for piston engines.",
+    "mixture": "Piston engine fuel-mixture control position.", "radiator": "Radiator opening percentage.",
+    "pitch": "Propeller blade pitch for each engine.", "efficiency": "Propeller efficiency for each engine.",
+    "flaps": "Flap position. Flaps can be damaged at high speed.",
+    "gear": "Landing gear position. High-speed deployment can damage the gear.",
+    "airbrake": "Airbrake position and its drag effect.", "heading": "Aircraft heading in degrees from north.",
+    "limit_ias": "Estimated indicated-airspeed limit for the current aircraft.",
+    "limit_mach": "Estimated Mach limit for the current aircraft.", "limit_pos_g": "Estimated positive G limit.",
+    "limit_neg_g": "Estimated negative G limit.", "limit_gear": "Estimated safe landing-gear speed limit.",
+    "limit_flaps": "Estimated landing-flap speed limit.",
+    "warning": "Warning that a speed, load-factor or fuel limit is approaching.",
+}
+
+
+def is_english_ui():
+    app = QApplication.instance()
+    return bool(app and app.property("language") == "en")
+
+
+def metric_label_for_ui(metric_id, english=None):
+    english = is_english_ui() if english is None else english
+    if not english:
+        return metric_label(metric_id)
+    engine = engine_metric_parts(metric_id)
+    if engine:
+        kind, index = engine
+        return f"{ENGINE_LABELS_EN.get(kind, kind.replace('_', ' ').title())}, engine {index}"
+    return METRIC_LABELS_EN.get(metric_id, metric_label(metric_id))
+
+
+def metric_help_for_ui(metric_id, english=None):
+    english = is_english_ui() if english is None else english
+    if not english:
+        return metric_help(metric_id)
+    engine = engine_metric_parts(metric_id)
+    if engine:
+        kind, index = engine
+        return METRIC_HELP_EN.get(kind, "War Thunder telemetry field.") + f" Engine {index} is shown."
+    if metric_id in METRIC_HELP_EN:
+        return METRIC_HELP_EN[metric_id]
+    if ":" in metric_id:
+        source, key = metric_id.split(":", 1)
+        origin = "aircraft state" if source == "state" else "game indicators"
+        return f"Field '{key}' from {origin}. The game sends it directly."
+    return "War Thunder telemetry field supplied by the local game interface."
+
+
+def value_for_ui(value, english=None):
+    """Translate units in values formatted by the language-neutral core."""
+    if not (english if english is not None else is_english_ui()) or not isinstance(value, str):
+        return value
+    for source, target in (("км/ч", "km/h"), ("кг/мин", "kg/min"), ("об/мин", "RPM"),
+                          ("м/с", "m/s"), ("л.с.", "hp"), ("кгс", "kgf"), ("атм", "atm"),
+                          ("кг", "kg"), ("м", "m")):
+        value = value.replace(source, target)
+    return value
+
+
+def warning_text_for_ui(value, english=None):
+    english = is_english_ui() if english is None else english
+    if not english or not value:
+        return value
+    replacements = {
+        "ПРЕДЕЛ MACH": "MACH LIMIT", "Близко к пределу MACH": "NEAR MACH LIMIT",
+        "МАЛО ТОПЛИВА": "LOW FUEL", "ВОЗМОЖНО СВАЛИВАНИЕ": "POSSIBLE STALL",
+        "ВЫСОКИЙ УГОЛ АТАКИ": "HIGH ANGLE OF ATTACK", "ПРЕДЕЛ +G": "+G LIMIT",
+        "ПРЕДЕЛ −G": "−G LIMIT", "Близко к пределу +G": "NEAR +G LIMIT",
+        "Близко к пределу −G": "NEAR −G LIMIT", "ПРЕДЕЛ IAS": "IAS LIMIT",
+        "Близко к пределу IAS": "NEAR IAS LIMIT", "Пределы не настроены": "LIMITS NOT SET",
+        "В пределах заданных значений": "WITHIN SET LIMITS", "Нет данных IAS и перегрузки": "NO IAS OR G DATA",
+    }
+    for source, target in replacements.items():
+        value = value.replace(source, target)
+    return value
+
+
 def new_group(metric_id, x=0.08, y=0.16):
     return HudGroup(metric_id=metric_id, x=x, y=y).to_dict()
 
@@ -349,7 +470,10 @@ class GroupView(QWidget):
         available = set(available_metrics(state, indicators, self.limits)) if active else None
         lines = []
         if self.group.get("title_visible"):
-            lines.append((self.group.get("title", "БЛОК"), "", "title", "__title__"))
+            title = self.group.get("title", "БЛОК")
+            if is_english_ui():
+                title = {"БЛОК": "BLOCK", "НОВАЯ ГРУППА": "NEW GROUP", "ДВИГАТЕЛЬ": "ENGINE"}.get(title, title)
+            lines.append((title, "", "title", "__title__"))
         for configured_metric in self.group.get("metrics", []):
             metric_ids = expand_engine_metric(configured_metric, state) if active else [configured_metric]
             for metric_id in metric_ids:
@@ -357,15 +481,16 @@ class GroupView(QWidget):
                     continue
                 if metric_id == "warning":
                     severity, warning = warning_for(self.sample, self.limits)
-                    value = warning if active else "ОЖИДАНИЕ БОЯ"
+                    value = warning_text_for_ui(warning if active else "ОЖИДАНИЕ БОЯ")
                     if not value or severity in ("normal", "unset"):
                         continue
                     lines.append(("", value, severity or "unset", "warning"))
                 else:
                     value = metric_value(metric_id, state, indicators, self.limits) if active else "—"
+                    value = value_for_ui(value)
                     label_map = self.group.get("label_map", {})
                     label = (label_map.get(metric_id, label_map.get(configured_metric, hud_label(metric_id)))
-                             if self.group.get("compact_labels", True) else metric_label(metric_id))
+                             if self.group.get("compact_labels", True) else metric_label_for_ui(metric_id))
                     label = label.upper() if self.group.get("labels", True) else ""
                     risk = metric_risk(metric_id, state, self.limits, state.get("_fuel_minutes", 3)) if active else None
                     lines.append((label, value, risk if risk is not None else "normal", metric_id))
@@ -509,11 +634,12 @@ class GroupView(QWidget):
         if metric_id == "__title__":
             self.metric_tip.hide()
             return
-        title = metric_label(metric_id)
+        title = metric_label_for_ui(metric_id)
         if metric_id == "warning":
-            title = "Предупреждения"
-        detail = metric_help(metric_id)
-        current = f"<br>Сейчас: {escape(value)}" if value and value != "—" else ""
+            title = "Warnings" if is_english_ui() else "Предупреждения"
+        detail = metric_help_for_ui(metric_id)
+        current_label = "Now" if is_english_ui() else "Сейчас"
+        current = f"<br>{current_label}: {escape(value_for_ui(value))}" if value and value != "—" else ""
         text = f"<b>{escape(title)}</b>{current}<br><br>{escape(detail)}"
         # A regular QToolTip disappears after a short platform timeout. Use a small,
         # non-interactive tool window and keep it visible for the entire hover instead.
@@ -616,20 +742,12 @@ class MetricList(QTreeWidget):
         english = QApplication.instance().property("language") == "en"
         section_en = {"Полёт": "Flight", "Двигатель": "Engine", "Механизация": "Configuration",
                       "Навигация": "Navigation", "Предупреждения": "Warnings", "Пределы самолёта": "Aircraft limits",
-                      "Другие данные": "Other data"}
-        label_en = {"ias": "IAS · Indicated", "tas": "TAS · True airspeed", "g": "LDF · G-load",
-                    "mach": "MACH · Mach number", "altitude": "ALT · Altitude", "climb": "CLMB · Climb rate",
-                    "aoa": "AOA · Angle of attack", "aos": "AOS · Sideslip", "fuel": "FUEL · Fuel",
-                    "rpm": "RPM · All engines", "throttle": "THR · All engines", "power": "PWR · All engines",
-                    "oil_temp": "OIL · All engines", "water_temp": "WTR · Cooling", "fuel_time": "FUEL · Remaining",
-                    "fuel_flow": "FUEL · Flow", "ias_margin": "IAS · Margin", "mach_margin": "MACH · Margin",
-                    "g_margin_pos": "G · Positive margin", "g_margin_neg": "G · Negative margin",
-                    "limit_ias": "IAS · Limit", "limit_mach": "MACH · Limit", "limit_pos_g": "G · Positive limit",
-                    "limit_neg_g": "G · Negative limit", "limit_gear": "GEAR · Limit", "limit_flaps": "FLAPS · Limit"}
+                      "Запас до предела": "Margins", "Другие данные": "Other data"}
         for metric_id in ids:
             label = metric_label(metric_id)
             code = hud_label(metric_id)
-            if query and not any(query in text.casefold() for text in (label, metric_id, code)):
+            search_values = (label, metric_label_for_ui(metric_id), metric_id, code)
+            if query and not any(query in text.casefold() for text in search_values):
                 continue
             section = (METRICS[metric_id][0] if metric_id in METRICS else
                        "Топливо и двигатель" if engine_metric_parts(metric_id) else "Другие данные")
@@ -659,19 +777,19 @@ class MetricList(QTreeWidget):
                        "limit_gear": "GEAR · Предел", "limit_flaps": "FLAPS · Предел"}.get(metric_id,
                                                                                                   f"{code} · {label}" if engine_metric_parts(metric_id) else label)
             if english:
-                display = label_en.get(metric_id, display)
-                label = label_en.get(metric_id, label)
+                display = metric_label_for_ui(metric_id)
+                label = metric_label_for_ui(metric_id)
             item = QTreeWidgetItem(sections[section], [display, "+"])
             item.setToolTip(0, label)
             item.setData(0, Qt.UserRole, metric_id)
             item.setTextAlignment(1, Qt.AlignCenter)
             item.setForeground(1, QColor(theme["accent"]))
             item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled)
-            item.setToolTip(0, f"{label}\n\n{metric_help(metric_id)}\n\n" +
+            item.setToolTip(0, f"{label}\n\n{metric_help_for_ui(metric_id)}\n\n" +
                              ("Drag to the layout or an existing group." if english else "Перетащите на макет или на существующую группу."))
             item.setToolTip(1, "Add metric" if english else "Добавить отдельный показатель")
         for section, parent in sections.items():
-            parent.setText(0, f"{section}  ·  {parent.childCount()}")
+            parent.setText(0, f"{section_en.get(section, section) if english else section}  ·  {parent.childCount()}")
             parent.setExpanded(bool(query) or section in self.expanded_sections)
         self.populating = False
         return sum(p.childCount() for p in sections.values())
@@ -1076,16 +1194,17 @@ class QuickSettings(QDialog):
 class LimitsDialog(QDialog):
     def __init__(self, parent, aircraft, limits):
         super().__init__(parent)
-        self.setWindowTitle("Пределы самолёта")
+        self._tr = getattr(parent, "tr_text", lambda text: text)
+        self.setWindowTitle(self._tr("Пределы самолёта"))
         self.setMinimumWidth(370)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"Самолёт: {aircraft}"))
-        info = QLabel("Пустое поле использует предел из базы. Число задаёт ваш порог для этого самолёта.\n"
-                      "Оценка G учитывает массу топлива, но не массу подвесок и экипажа.")
+        layout.addWidget(QLabel(self._tr("Самолёт:") + f" {aircraft}"))
+        info = QLabel(self._tr("Пустое поле использует предел из базы. Число задаёт ваш порог для этого самолёта.\n"
+                               "Оценка G учитывает массу топлива, но не массу подвесок и экипажа."))
         info.setWordWrap(True)
         info.setObjectName("muted")
         layout.addWidget(info)
-        self.auto_check = QCheckBox("Автоматические пределы из базы")
+        self.auto_check = QCheckBox(self._tr("Автоматические пределы из базы"))
         self.auto_check.setChecked(limits.get("_auto", True))
         layout.addWidget(self.auto_check)
         automatic = parent.database.limits(aircraft, parent.sample[1])
@@ -1094,16 +1213,18 @@ class LimitsDialog(QDialog):
                            ("negative_g", "Предел −G"),
                            ("ias_kmh", "Предел IAS, км/ч")):
             row = QHBoxLayout()
-            row.addWidget(QLabel(title))
+            row.addWidget(QLabel(self._tr(title)))
             edit = QLineEdit()
             value = limits.get(key)
             edit.setText(str(value) if value is not None else "")
             auto_value = automatic.get(key)
-            edit.setPlaceholderText(f"Авто: {auto_value:.1f}" if auto_value is not None else "Нет данных")
+            edit.setPlaceholderText((self._tr("Авто: ") + f"{auto_value:.1f}") if auto_value is not None else self._tr("Нет данных"))
             row.addWidget(edit)
             self.entries[key] = edit
             layout.addLayout(row)
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Save).setText(self._tr("Сохранить"))
+        buttons.button(QDialogButtonBox.Cancel).setText(self._tr("Отмена"))
         buttons.accepted.connect(self.validate)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -1115,13 +1236,13 @@ class LimitsDialog(QDialog):
             raw = edit.text().strip().replace(",", ".")
             value = number(raw) if raw else None
             if raw and value is None:
-                QMessageBox.warning(self, "Пределы", "Введите число или оставьте поле пустым.")
+                QMessageBox.warning(self, self._tr("Пределы"), self._tr("Введите число или оставьте поле пустым."))
                 return
             values[key] = value
         if ((values["positive_g"] is not None and values["positive_g"] <= 1) or
                 (values["negative_g"] is not None and values["negative_g"] >= 0) or
                 (values["ias_kmh"] is not None and values["ias_kmh"] <= 0)):
-            QMessageBox.warning(self, "Пределы", "Нужно: +G > 1, −G < 0, IAS > 0.")
+            QMessageBox.warning(self, self._tr("Пределы"), self._tr("Нужно: +G > 1, −G < 0, IAS > 0."))
             return
         values["_auto"] = self.auto_check.isChecked()
         self.values = values
@@ -1194,7 +1315,7 @@ class MainWindow(FeatureControls, QMainWindow):
         self.resize(720, 560)
         self.setMinimumSize(640, 520)
         self.build_ui()
-        self.set_language(self.settings.data.get("language", "en"), save=False)
+        self.set_language(self.settings.data.get("language", "ru"), save=False)
         self.set_theme(self.settings.data.get("theme", "graphite"))
         self.install_editor_shortcuts()
         QApplication.instance().installEventFilter(self)
@@ -1218,7 +1339,7 @@ class MainWindow(FeatureControls, QMainWindow):
                                 self.tr_text("Клавиша занята • откройте меню"))
         self.quick_settings = QuickSettings(self)
         # Quick menu is created after the main window; apply the selected language to it too.
-        self.set_language(self.settings.data.get("language", "en"), save=False)
+        self.set_language(self.settings.data.get("language", "ru"), save=False)
         self.main_key_panel.sync()
         self.settings.save()
         interval = 1 / self.settings.data.get("flight", {}).get("telemetry_hz", 10)
@@ -1423,16 +1544,39 @@ class MainWindow(FeatureControls, QMainWindow):
         if self.settings.data.get("language", "ru") == "ru":
             return value
         result = UI_TRANSLATIONS.get(value, value)
+        if value.startswith("Версия программы:"):
+            return "Application version:" + value.split(":", 1)[1]
+        if value.startswith("Доступна версия "):
+            return "Version available: " + value.split("Доступна версия ", 1)[1]
+        if value.startswith("Установлена последняя версия · "):
+            return "Latest version installed · " + value.split("Установлена последняя версия · ", 1)[1]
+        if value.startswith("Удалить сохранённый конфиг «") and value.endswith("»?"):
+            name = value[len("Удалить сохранённый конфиг «"):-2]
+            return f"Delete saved config '{name}'?"
+        if value.startswith("У вас уже последняя версия "):
+            return "You already have the latest version " + value.split("У вас уже последняя версия ", 1)[1]
+        if value.startswith("Доступна новая версия WT Flight:"):
+            return value.replace("Доступна новая версия WT Flight:", "New WT Flight version available:", 1)
+        if value.startswith("Не удалось скачать установщик: "):
+            return "Could not download installer: " + value.split("Не удалось скачать установщик: ", 1)[1]
+        if value.startswith("Не удалось запустить установщик: "):
+            return "Could not start installer: " + value.split("Не удалось запустить установщик: ", 1)[1]
         if value.startswith("База "):
             result = value.replace("База ", "Database ", 1)
             result = result.replace(" моделей · локальная копия", " models · local copy")
             result = result.replace(" моделей · проверка обновления…", " models · checking for updates…")
             result = result.replace(" моделей · последняя доступная версия", " models · latest available version")
+            result = result.replace(" · нет связи, локальная копия", " · offline, local copy")
             result = result.replace(" · локальная копия", " · local copy")
+            result = result.replace(" · последняя доступная версия", " · latest available version")
             return result
-        if value.startswith("Версия программы:"):
-            return "Application version:" + value.split(":", 1)[1]
         return result
+
+    def metric_label_ui(self, metric_id):
+        return metric_label_for_ui(metric_id)
+
+    def metric_value_ui(self, value):
+        return value_for_ui(value)
 
     def build_ui(self):
         central = QWidget()
@@ -1896,6 +2040,14 @@ class MainWindow(FeatureControls, QMainWindow):
             self.language_box.blockSignals(False)
         if hasattr(self, "quick_settings"):
             self.quick_settings.setWindowTitle("WT Flight · " + ("Quick menu" if language == "en" else "Быстрое меню"))
+        self.setWindowTitle("WT Flight · " + ("HUD Editor" if language == "en" else "Редактор HUD"))
+        if hasattr(self, "tray_actions"):
+            for key, source in (("quick", "Быстрое меню настроек"), ("editor", "Открыть редактор"),
+                                ("hud", "Показать / скрыть HUD"), ("exit", "Выход")):
+                self.tray_actions[key].setText(translate(source))
+        if hasattr(self, "demo_badge"):
+            self.demo_badge.setText(translate("ТЕСТ — ПРИМЕР ДАННЫХ"))
+            self.place_demo_badge()
         for name, ru_suffix, en_suffix in (("fuel_critical_spin", " с", " s"),
                                            ("repeat_spin", " с", " s"),
                                            ("fuel_spin", " мин", " min")):
@@ -1915,7 +2067,7 @@ class MainWindow(FeatureControls, QMainWindow):
         if self.update_checker and self.update_checker.isRunning():
             return
         if not silent:
-            self.update_status.setText("Проверка GitHub…")
+            self.update_status.setText(self.tr_text("Проверка GitHub…"))
         self.update_button.setEnabled(False)
         if hasattr(self, "update_check_button"):
             self.update_check_button.setEnabled(False)
@@ -1936,27 +2088,30 @@ class MainWindow(FeatureControls, QMainWindow):
             self.update_check_button.setEnabled(True)
         if error or not info:
             if not silent:
-                self.update_status.setText("Не удалось проверить обновления")
-                QMessageBox.warning(self, "Проверка обновлений", "GitHub недоступен. Проверьте интернет-соединение.")
+                self.update_status.setText(self.tr_text("Не удалось проверить обновления"))
+                QMessageBox.warning(self, self.tr_text("Проверка обновлений"),
+                                     self.tr_text("GitHub недоступен. Проверьте интернет-соединение."))
             return
         latest = info.get("version", "")
         if self._version_tuple(latest) <= self._version_tuple(APP_VERSION):
-            self.update_status.setText(f"Установлена последняя версия · {APP_VERSION}")
+            self.update_status.setText(self.tr_text(f"Установлена последняя версия · {APP_VERSION}"))
             if not silent:
-                QMessageBox.information(self, "Обновления", f"У вас уже последняя версия {APP_VERSION}.")
+                QMessageBox.information(self, self.tr_text("Обновления"),
+                                         self.tr_text(f"У вас уже последняя версия {APP_VERSION}."))
             return
-        self.update_status.setText(f"Доступна версия {latest}")
+        self.update_status.setText(self.tr_text(f"Доступна версия {latest}"))
         if self.settings.data.get("updates_skip_version") == latest:
             return
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Information)
-        box.setWindowTitle("Доступно обновление")
-        box.setText(f"Доступна новая версия WT Flight: {latest}\nТекущая версия: {APP_VERSION}")
-        box.setInformativeText("Скачайте установщик из GitHub. Он обновит программу в папке D:\\WT Flight.")
-        skip = QCheckBox("Больше не напоминать об этой версии", box)
+        box.setWindowTitle(self.tr_text("Доступно обновление"))
+        box.setText(self.tr_text(f"Доступна новая версия WT Flight: {latest}") +
+                    f"\n{self.tr_text('Текущая версия:')} {APP_VERSION}")
+        box.setInformativeText(self.tr_text("Скачайте установщик из GitHub. Он обновит программу в папке D:\\WT Flight."))
+        skip = QCheckBox(self.tr_text("Больше не напоминать об этой версии"), box)
         box.setCheckBox(skip)
-        download = box.addButton("Скачать и установить", QMessageBox.AcceptRole)
-        box.addButton("Позже", QMessageBox.RejectRole)
+        download = box.addButton(self.tr_text("Скачать и установить"), QMessageBox.AcceptRole)
+        box.addButton(self.tr_text("Позже"), QMessageBox.RejectRole)
         box.exec()
         if skip.isChecked():
             self.settings.data["updates_skip_version"] = latest
@@ -1970,8 +2125,8 @@ class MainWindow(FeatureControls, QMainWindow):
             QDesktopServices.openUrl(QUrl(info.get("url") or GITHUB_RELEASES))
             return
         filename = f"WT-Flight-Setup-{info.get('version', 'latest')}.exe"
-        self.update_progress = QProgressDialog("Скачивание установщика…", "Отмена", 0, 100, self)
-        self.update_progress.setWindowTitle("Обновление WT Flight")
+        self.update_progress = QProgressDialog(self.tr_text("Скачивание установщика…"), self.tr_text("Отмена"), 0, 100, self)
+        self.update_progress.setWindowTitle(self.tr_text("Обновление WT Flight"))
         self.update_progress.setAutoClose(False)
         self.update_progress.setMinimumDuration(0)
         self.update_progress.show()
@@ -1985,10 +2140,13 @@ class MainWindow(FeatureControls, QMainWindow):
         if self.update_progress:
             self.update_progress.close()
         if error or not path or not Path(path).is_file():
-            QMessageBox.warning(self, "Обновление", "Не удалось скачать установщик: " + (error or "файл не найден"))
+            QMessageBox.warning(self, self.tr_text("Обновление"),
+                                 self.tr_text("Не удалось скачать установщик: ") +
+                                 self.tr_text(error or "файл не найден"))
             return
         answer = QMessageBox.question(
-            self, "Установить обновление", "Установщик скачан. Закрыть WT Flight и запустить установку сейчас?",
+            self, self.tr_text("Установить обновление"),
+            self.tr_text("Установщик скачан. Закрыть WT Flight и запустить установку сейчас?"),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if answer != QMessageBox.Yes:
             return
@@ -1996,7 +2154,8 @@ class MainWindow(FeatureControls, QMainWindow):
             subprocess.Popen([path], cwd=str(Path(path).parent))
             QTimer.singleShot(250, QApplication.instance().quit)
         except OSError as error:
-            QMessageBox.warning(self, "Обновление", "Не удалось запустить установщик: " + str(error))
+            QMessageBox.warning(self, self.tr_text("Обновление"),
+                                 self.tr_text("Не удалось запустить установщик: ") + str(error))
 
     def select_from_combo(self):
         self.select_group(self.group_selector.currentData())
@@ -2020,13 +2179,13 @@ class MainWindow(FeatureControls, QMainWindow):
                 elif key == "mach":
                     text = f"{value:.2f} M"
                 else:
-                    text = f"{value:.0f} км/ч"
+                    text = f"{value:.0f} {'km/h' if is_english_ui() else 'км/ч'}"
             label.setText(text)
         notes = []
         if limits.get("_g_estimate"):
-            notes.append("G рассчитана по пустой массе и текущему топливу; подвески и экипаж не учтены.")
+            notes.append(self.tr_text("G рассчитана по пустой массе и текущему топливу; подвески и экипаж не учтены."))
         if limits.get("_sweep_conservative"):
-            notes.append("Стреловидность неизвестна: для IAS / Mach взят минимальный предел из таблицы крыла.")
+            notes.append(self.tr_text("Стреловидность неизвестна: для IAS / Mach взят минимальный предел из таблицы крыла."))
         if not notes:
             notes.append(self.tr_text("Пределы загружаются автоматически при получении модели самолёта из игры."))
         self.limit_note.setText(" ".join(notes))
@@ -2037,7 +2196,7 @@ class MainWindow(FeatureControls, QMainWindow):
         if self.db_updater and self.db_updater.isRunning():
             return
         self.database_update_button.setEnabled(False)
-        self.database_note.setText(f"База {self.database.version} · проверка обновления…")
+        self.database_note.setText(self.tr_text(f"База {self.database.version} · проверка обновления…"))
         self.db_updater = DatabaseUpdater(CONFIG_PATH.parent, self.database.version)
         self.db_updater.completed.connect(self.on_database_update)
         self.db_updater.start()
@@ -2053,7 +2212,7 @@ class MainWindow(FeatureControls, QMainWindow):
             self.demo_pulse()
         else:
             self.present_sample(*self.last_real_sample)
-        self.database_note.setText(f"База {self.database.version} · {self.database_status}")
+        self.database_note.setText(self.tr_text(f"База {self.database.version} · {self.database_status}"))
         self.database_note.setToolTip(error or "https://github.com/SpaceCapo/warthunder-byo-fm")
 
     def restore_background(self):
@@ -2071,7 +2230,7 @@ class MainWindow(FeatureControls, QMainWindow):
         self.remove_background_action.setEnabled(not self.canvas.background.isNull())
 
     def choose_background(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Фон предпросмотра — выберите скриншот", "",
+        path, _ = QFileDialog.getOpenFileName(self, self.tr_text("Фон предпросмотра — выберите скриншот"), "",
                                             "Изображения (*.png *.jpg *.jpeg *.webp *.bmp)")
         if path:
             self.load_background(path)
@@ -2081,7 +2240,8 @@ class MainWindow(FeatureControls, QMainWindow):
         reader.setAutoTransform(True)
         image = reader.read()
         if image.isNull():
-            QMessageBox.warning(self, "Не удалось открыть фон", "Выберите изображение PNG, JPEG, WebP или BMP.")
+            QMessageBox.warning(self, self.tr_text("Не удалось открыть фон"),
+                                 self.tr_text("Выберите изображение PNG, JPEG, WebP или BMP."))
             return False
         if image.width() > 2560 or image.height() > 2560:
             image = image.scaled(2560, 2560, Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -2089,7 +2249,8 @@ class MainWindow(FeatureControls, QMainWindow):
         target.parent.mkdir(parents=True, exist_ok=True)
         output = QSaveFile(str(target))
         if not output.open(QIODevice.WriteOnly) or not image.save(output, "PNG") or not output.commit():
-            QMessageBox.warning(self, "Не удалось сохранить фон", "Не удалось сохранить изображение в папке настроек.")
+            QMessageBox.warning(self, self.tr_text("Не удалось сохранить фон"),
+                                 self.tr_text("Не удалось сохранить изображение в папке настроек."))
             return False
         self.settings.data.setdefault("preview", {})["image"] = str(target)
         self.settings.save()
@@ -2125,7 +2286,7 @@ class MainWindow(FeatureControls, QMainWindow):
 
     @staticmethod
     def group_caption(group):
-        return " / ".join(HUD_LABELS.get(m, metric_label(m)) for m in group["metrics"])
+        return " / ".join(HUD_LABELS.get(m, metric_label_for_ui(m)) for m in group["metrics"])
 
     def build_tray(self):
         pixmap = QPixmap(64, 64)
@@ -2140,12 +2301,15 @@ class MainWindow(FeatureControls, QMainWindow):
         painter.drawText(QRect(0, 0, 64, 64), Qt.AlignCenter, "W")
         painter.end()
         self.tray = QSystemTrayIcon(QIcon(pixmap), self)
-        menu = QMenu()
-        menu.addAction("Быстрое меню настроек", self.toggle_quick_settings)
-        menu.addAction("Открыть редактор", self.open_editor)
-        menu.addAction("Показать / скрыть HUD", self.toggle_hud)
+        menu = QMenu(self)
+        self.tray_menu = menu
+        self.tray_actions = {
+            "quick": menu.addAction("Быстрое меню настроек", self.toggle_quick_settings),
+            "editor": menu.addAction("Открыть редактор", self.open_editor),
+            "hud": menu.addAction("Показать / скрыть HUD", self.toggle_hud),
+        }
         menu.addSeparator()
-        menu.addAction("Выход", self.exit_app)
+        self.tray_actions["exit"] = menu.addAction("Выход", self.exit_app)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(lambda reason: self.open_editor()
                             if reason == QSystemTrayIcon.DoubleClick else None)
@@ -2201,7 +2365,7 @@ class MainWindow(FeatureControls, QMainWindow):
             self.hud_style_box.setCurrentIndex(self.hud_style_box.findData(group.get("hud_style", "wtrti")))
             self.hud_style_box.blockSignals(False)
             for metric_id in group.get("metrics", []):
-                self.group_metrics.addItem(metric_label(metric_id))
+                self.group_metrics.addItem(metric_label_for_ui(metric_id))
         else:
             self.inspector_note.setText(self.tr_text("Выберите блок на макете, чтобы изменить его вид."))
             self.title_edit.clear()
@@ -2243,7 +2407,7 @@ class MainWindow(FeatureControls, QMainWindow):
         group = self.selected_group()
         if not group:
             return
-        color = QColorDialog.getColor(QColor(group.get(key, INK)), self, "Цвет HUD")
+        color = QColorDialog.getColor(QColor(group.get(key, INK)), self, self.tr_text("Цвет HUD"))
         if color.isValid():
             group[key] = color.name()
             if key in ("color", "accent", "outline_color"):

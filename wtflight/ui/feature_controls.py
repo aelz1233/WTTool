@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog, QFormLayout,
-                               QHBoxLayout, QInputDialog, QLabel, QListWidget, QListWidgetItem, QMenu,
+                               QDialog, QDialogButtonBox, QHBoxLayout, QInputDialog, QLabel, QListWidget, QListWidgetItem, QMenu,
                                QMessageBox, QPushButton, QSlider, QVBoxLayout, QWidget)
 
 from wtflight.services.audio import WarningAudio
@@ -419,7 +419,7 @@ class FeatureControls:
         mode, state, indicators = self.sample
         live = mode in ("live", "demo") and state.get("valid")
         self.helicopter_title.setText(self.database.display_name(self.aircraft) if live and self.aircraft != "default"
-                                      else "Данные вертолёта появятся после входа в бой")
+                                      else self.tr_text("Данные вертолёта появятся после входа в бой"))
         self.helicopter_values.clear()
         if not live:
             self.add_helicopter_metric_button.setEnabled(False)
@@ -432,7 +432,10 @@ class FeatureControls:
         metric_ids = list(dict.fromkeys([metric for metric in preferred if metric in (self.available or [])] + raw))
         limits = self.current_limits()
         for metric_id in metric_ids:
-            item = QListWidgetItem(f"{metric_label(metric_id)}   {metric_value(metric_id, state, indicators, limits)}")
+            label = self.metric_label_ui(metric_id) if hasattr(self, "metric_label_ui") else metric_label(metric_id)
+            value = metric_value(metric_id, state, indicators, limits)
+            value = self.metric_value_ui(value) if hasattr(self, "metric_value_ui") else value
+            item = QListWidgetItem(f"{label}   {value}")
             item.setData(Qt.ItemDataRole.UserRole, metric_id)
             self.helicopter_values.addItem(item)
         self.add_helicopter_metric_button.setEnabled(bool(metric_ids))
@@ -456,7 +459,16 @@ class FeatureControls:
         self.layout_changed()
 
     def save_preset(self):
-        name, ok = QInputDialog.getText(self, "Сохранить макет", "Название:")
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle(self.tr_text("Сохранить макет"))
+        dialog.setLabelText(self.tr_text("Название:"))
+        dialog.setTextValue("")
+        buttons = dialog.findChildren(QDialogButtonBox)
+        if buttons:
+            buttons[0].button(QDialogButtonBox.Ok).setText(self.tr_text("ОК"))
+            buttons[0].button(QDialogButtonBox.Cancel).setText(self.tr_text("Отмена"))
+        ok = dialog.exec() == QDialog.DialogCode.Accepted
+        name = dialog.textValue()
         name = name.strip()[:60]
         if ok and name:
             saved = self.settings.data.setdefault("saved_layouts", {})
@@ -484,7 +496,8 @@ class FeatureControls:
         if not data or data[0] != "saved":
             return
         name = data[1]
-        answer = QMessageBox.question(self, "Удалить конфиг", f"Удалить сохранённый конфиг «{name}»?",
+        answer = QMessageBox.question(self, self.tr_text("Удалить конфиг"),
+                                      self.tr_text(f"Удалить сохранённый конфиг «{name}»?"),
                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                       QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes:
@@ -494,13 +507,14 @@ class FeatureControls:
         self.refresh_presets()
 
     def export_profile(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Экспорт макета", "wt-profile.json", "Профиль (*.json)")
+        path, _ = QFileDialog.getSaveFileName(self, self.tr_text("Экспорт макета"), "wt-profile.json",
+                                              self.tr_text("Профиль (*.json)"))
         if path:
             try:
                 Path(path).write_text(json.dumps({"format": "wt-flight-profile", "version": 1,
                                                  "groups": self.groups()}, ensure_ascii=False, indent=2), encoding="utf-8")
             except OSError as error:
-                QMessageBox.warning(self, "Экспорт", str(error))
+                QMessageBox.warning(self, self.tr_text("Экспорт"), self.tr_text(str(error)))
 
     def load_profile_file(self, path):
         if Path(path).stat().st_size > 1_000_000:
@@ -511,12 +525,13 @@ class FeatureControls:
         self.layout_changed()
 
     def import_profile(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Импорт макета", "", "Профиль (*.json)")
+        path, _ = QFileDialog.getOpenFileName(self, self.tr_text("Импорт макета"), "",
+                                              self.tr_text("Профиль (*.json)"))
         if path:
             try:
                 self.load_profile_file(path)
             except (OSError, ValueError, TypeError) as error:
-                QMessageBox.warning(self, "Не удалось импортировать", str(error))
+                QMessageBox.warning(self, self.tr_text("Не удалось импортировать"), self.tr_text(str(error)))
 
     def save_flight_options(self, *_):
         self.settings.data["sound"] = self.sound_check.isChecked()
@@ -537,8 +552,8 @@ class FeatureControls:
 
     def choose_warning_sound(self):
         key = self.sound_test_kind.currentData()
-        path, _ = QFileDialog.getOpenFileName(self, "Выберите звук предупреждения", "",
-                                               "WAV, PCM 16-bit (*.wav)")
+        path, _ = QFileDialog.getOpenFileName(self, self.tr_text("Выберите звук предупреждения"), "",
+                                               self.tr_text("WAV, PCM 16-bit (*.wav)"))
         if not path:
             return
         try:
@@ -561,7 +576,7 @@ class FeatureControls:
             self.settings.save()
             self.refresh_sound_file_note()
         except (OSError, ValueError, wave.Error, EOFError) as error:
-            QMessageBox.warning(self, "Звук предупреждения", str(error))
+            QMessageBox.warning(self, self.tr_text("Звук предупреждения"), self.tr_text(str(error)))
 
     def reset_warning_sound(self):
         key = self.sound_test_kind.currentData()
@@ -600,7 +615,7 @@ class FeatureControls:
         self.visibility_timer.setInterval(300)
         self.visibility_timer.timeout.connect(self.update_overlays)
         self.visibility_timer.start()
-        self.demo_badge = QLabel("ТЕСТ — ПРИМЕР ДАННЫХ")
+        self.demo_badge = QLabel(self.tr_text("ТЕСТ — ПРИМЕР ДАННЫХ"))
         self.demo_badge.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowTransparentForInput)
         self.demo_badge.setStyleSheet("QLabel { background: #7f4f15; color: #fff2ce; padding: 5px 12px; font-size: 13px; }")
         self.demo_badge.setAttribute(Qt.WA_ShowWithoutActivating)

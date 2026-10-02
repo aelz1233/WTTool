@@ -119,6 +119,71 @@ UI_TRANSLATIONS: Final[dict[str, str]] = {
     "Клавиша занята другой программой. Выберите другую; прежняя настройка сохранена.": "This key is already used by another program. Choose another one; the previous setting was kept.",
     "Определён автоматически · ": "Detected automatically · ", "Этой модели нет в базе · ": "This model is not in the database · ",
     "Рассчитано по пустой массе и текущему топливу; подвески и экипаж не учтены.": "Estimated from empty weight and current fuel; stores and crew are not included.",
+    "Проверить новую версию программы на GitHub": "Check the program version on GitHub",
+    "Самолёт не определён": "Aircraft not detected", "ТЕСТ · ПРИМЕР ДАННЫХ": "DEMO · SAMPLE DATA",
+    "ТЕСТ — ПРИМЕР ДАННЫХ": "DEMO — SAMPLE DATA",
+    "В БОЮ  ·  LIVE": "IN BATTLE  ·  LIVE", "Ожидание боя": "Waiting for battle",
+    "Пределы загружаются автоматически при получении модели самолёта из игры.": "Limits load automatically when the aircraft model is received from the game.",
+    "Вернуть исходный вариант выбранного стандартного макета для текущего самолёта. Изменение можно отменить через Ctrl+Z.": "Restore the selected built-in layout for the current aircraft. Undo with Ctrl+Z.",
+    "Применить сочетание": "Apply shortcut", "Для меню нужна клавиша": "The menu requires a key", "Отключить это сочетание": "Disable this shortcut",
+    "Частота чтения локального API War Thunder. 10 раз/с подходит для большинства ПК.": "War Thunder local API polling rate. 10 Hz suits most PCs.",
+    "Порог критического угла атаки. HUD предупредит с 90% и станет красным на самом пороге.": "Critical angle-of-attack threshold. The HUD warns at 90% and turns red at the limit.",
+    "Жёлтое мигание начнётся при этом проценте от предела IAS, Mach, G или AoA.": "Yellow flashing starts at this percentage of the IAS, Mach, G or AoA limit.",
+    "Красное предупреждение о топливе начинается, когда остаётся меньше этого времени.": "The red fuel warning starts when less than this time remains.",
+    "Уменьшить на один шаг": "Decrease by one step", "Увеличить на один шаг": "Increase by one step",
+    "Создать компактный HUD: полёт, двигатель и топливо": "Create a compact HUD: flight, engine and fuel",
+    "Применить макет к текущему профилю самолёта": "Apply the layout to the current aircraft profile",
+    "5 раз/с": "5 Hz", "10 раз/с": "10 Hz", "15 раз/с": "15 Hz",
+    "Сигнал скорости": "Speed signal", "Сигнал перегрузки": "G-load signal", "Сигнал топлива": "Fuel signal", "Сигнал сваливания": "Stall signal",
+    "WTRTI · моноширинный": "WTRTI · monospaced", "War Thunder · игровой": "War Thunder · in-game",
+    "Ледяной · голубой": "Ice · blue", "Неон · розовый": "Neon · pink",
+    "Graphite · Тёмный · спокойный зелёный": "Graphite · Dark · calm green", "Cockpit · Приборный · янтарный": "Cockpit · Instrument · amber",
+    "Arctic · Светлый · синий акцент": "Arctic · Light · blue accent", "Dark · Глубокая тёмная тема": "Dark · Deep dark theme", "Rose · Тёмная · розовый акцент": "Rose · Dark · pink accent",
+    # Runtime dialogs and messages.  These strings are not owned by a
+    # persistent widget, so set_language() translates them at the call site.
+    "Введите число или оставьте поле пустым.": "Enter a number or leave the field empty.",
+    "Нужно: +G > 1, −G < 0, IAS > 0.": "Required: +G > 1, −G < 0, IAS > 0.",
+    "GitHub недоступен. Проверьте интернет-соединение.": "GitHub is unavailable. Check your internet connection.",
+    "Обновления": "Updates", "Фон предпросмотра — выберите скриншот": "Preview background — choose a screenshot",
+    "Не удалось открыть фон": "Could not open background", "Не удалось сохранить фон": "Could not save background",
+    "Не удалось сохранить изображение в папке настроек.": "Could not save the image in the settings folder.",
+    "Экспорт": "Export", "Импорт": "Import", "Выберите звук предупреждения": "Choose an alert sound",
+    "Звук предупреждения": "Alert sound", "Цвет HUD": "HUD color", "Самолёт:": "Aircraft:",
+    "Пустое поле использует предел из базы. Число задаёт ваш порог для этого самолёта.\nОценка G учитывает массу топлива, но не массу подвесок и экипажа.":
+        "An empty field uses the database limit. A number sets your threshold for this aircraft.\n"
+        "The G estimate includes fuel mass, but not stores or crew.",
+    "Автоматические пределы из базы": "Automatic limits from database", "Предел +G": "+G limit",
+    "Предел −G": "−G limit", "Предел IAS, км/ч": "IAS limit, km/h", "Нет данных": "No data",
+    "Авто: ": "Auto: ", "Сохранено: ": "Saved: ", "Назначьте клавишу для меню.": "Assign a key for the menu.",
+    "Уже назначено: ": "Already assigned: ", "Отключено": "Disabled", "Отменено пользователем": "Cancelled by user",
+    "Выберите одну клавишу или одно сочетание.": "Choose one key or one shortcut.",
+    "F12 зарезервирована Windows. Выберите другую клавишу.": "F12 is reserved by Windows. Choose another key.",
+    "Подойдут Insert, F1–F11, буквы, цифры или сочетание с Ctrl / Alt / Shift.":
+        "Use Insert, F1–F11, letters, digits, or a Ctrl / Alt / Shift shortcut.",
+    "Глобальная клавиша доступна в Windows. Меню можно открыть из трея.":
+        "Global hotkeys are available on Windows. Open the menu from the tray.",
+    "G рассчитана по пустой массе и текущему топливу; подвески и экипаж не учтены.":
+        "G is estimated from empty mass and current fuel; stores and crew are not included.",
+    "Стреловидность неизвестна: для IAS / Mach взят минимальный предел из таблицы крыла.":
+        "Wing sweep is unknown: the minimum limit from the wing table is used for IAS / Mach.",
+    "Поддерживается PCM WAV: 16 бит, mono/stereo, до 30 секунд": "PCM WAV only: 16-bit, mono/stereo, up to 30 seconds",
+    "WAV-файл больше 20 МБ": "The WAV file is larger than 20 MB",
+    "Не удалось загрузить этот WAV. Проверьте формат файла.": "Could not load this WAV. Check the file format.",
+    "Быстрое меню настроек": "Quick settings menu", "Выход": "Exit", "ОК": "OK",
+    "Установщик скачан. Закрыть WT Flight и запустить установку сейчас?":
+        "The installer was downloaded. Close WT Flight and start installation now?",
+    "Текущая версия:": "Current version:",
+    "У вас уже последняя версия {version}.": "You already have the latest version {version}.",
+    "Удалить сохранённый конфиг «": "Delete saved config '",
+    "WAV, PCM 16-bit (*.wav)": "WAV, PCM 16-bit (*.wav)", "Изображения (*.png *.jpg *.jpeg *.webp *.bmp)": "Images (*.png *.jpg *.jpeg *.webp *.bmp)",
+    "ТЕСТ · ": "DEMO · ", "Изменения сразу применяются к HUD и сохраняются.": "Changes apply to the HUD immediately and are saved.",
+    "отключено": "disabled",
+    "Скачайте установщик из GitHub. Он обновит программу в папке D:\\WT Flight.":
+        "Download the installer from GitHub. It will update the program in D:\\WT Flight.",
+    "файл не найден": "file not found", "Файл профиля слишком большой": "Profile file is too large",
+    "нет связи, локальная копия": "offline, local copy", "последняя доступная версия": "latest available version",
+    "Список обновится автоматически": "The list updates automatically", "Точный макет экрана\nФон → скриншот боя":
+        "Exact screen layout\nBackground → battle screenshot",
 }
 
 

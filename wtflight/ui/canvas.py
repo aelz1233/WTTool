@@ -263,4 +263,7 @@ class FlightCanvas(QGraphicsView):
             font = QFont("Segoe UI")
             font.setPixelSize(round(11 / max(.1, self.transform().m11())))
             painter.setFont(font)
-            painter.drawText(screen, Qt.AlignCenter, "Точный макет экрана\nФон → скриншот боя")
+            english = QApplication.instance().property("language") == "en"
+            painter.drawText(screen, Qt.AlignCenter,
+                             "Exact screen layout\nBackground → battle screenshot" if english else
+                             "Точный макет экрана\nФон → скриншот боя")
