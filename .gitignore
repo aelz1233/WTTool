@@ -9,6 +9,7 @@ env/
 build/
 dist/
 release/
+WT Flight.spec
 audit_artifacts/
 .tools/
 
