@@ -29,16 +29,16 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox,
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 
-from wt_core import (CONFIG_PATH, METRICS, available_metrics, evaluate,
+from wtflight.core.metrics import (CONFIG_PATH, METRICS, available_metrics, evaluate,
                      metric_help, metric_label, metric_value, number, ENGINE_FIELDS,
                      engine_metric_parts, expand_engine_metric)
-from wt_hotkey import GlobalHotkey, HOTKEYS
-from wt_aircraft import AircraftDatabase, download_database, normalized_id
-from wt_themes import THEMES, HUD_STYLES, theme_style
-from wt_canvas import FlightCanvas
-from wt_features import metric_risk, add_margins
-from wt_feature_ui import FeatureControls
-from wt_controls import SteppedSpinBox
+from wtflight.win32.hotkey import GlobalHotkey, HOTKEYS
+from wtflight.core.aircraft import AircraftDatabase, download_database, normalized_id
+from wtflight.ui.theme import THEMES, HUD_STYLES, theme_style
+from wtflight.ui.canvas import FlightCanvas
+from wtflight.core._features import metric_risk, add_margins
+from wtflight.ui.feature_controls import FeatureControls
+from wtflight.ui.controls import SteppedSpinBox
 from wtflight.core.models import HudGroup
 from wtflight.core.settings import Settings as _Settings
 from wtflight.ui.tabs import AircraftTab

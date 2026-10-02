@@ -12,11 +12,11 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog, 
                                QHBoxLayout, QInputDialog, QLabel, QListWidget, QListWidgetItem, QMenu,
                                QMessageBox, QPushButton, QSlider, QVBoxLayout, QWidget)
 
-from wt_audio import WarningAudio
-from wt_features import LayoutHistory, FuelEstimator, AlertCooldown, alert_levels, validate_profile
-from wt_visibility import game_is_foreground
-from wt_controls import SteppedSpinBox
-from wt_core import CONFIG_PATH, metric_label, metric_value
+from wtflight.services.audio import WarningAudio
+from wtflight.core._features import LayoutHistory, FuelEstimator, AlertCooldown, alert_levels, validate_profile
+from wtflight.win32.foreground import game_is_foreground
+from wtflight.ui.controls import SteppedSpinBox
+from wtflight.core.metrics import CONFIG_PATH, metric_label, metric_value
 
 
 class FeatureControls:
@@ -354,7 +354,7 @@ class FeatureControls:
                 getattr(self, name).setEnabled(enabled)
 
     def preset_groups(self, kind):
-        from wt_qt import reference_profile
+        from wtflight.ui.main_window import reference_profile
         return reference_profile(kind)
 
     def build_helicopter_tab(self):
@@ -589,7 +589,7 @@ class FeatureControls:
         return True
 
     def start_feature_timers(self):
-        from wt_qt import CONFIG_PATH
+        from wtflight.core.metrics import CONFIG_PATH
         self.populate_screens()
         QApplication.instance().screenAdded.connect(self.populate_screens)
         QApplication.instance().screenRemoved.connect(self.populate_screens)

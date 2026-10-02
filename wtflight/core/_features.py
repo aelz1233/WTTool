@@ -5,7 +5,7 @@ import re
 import uuid
 from collections import deque
 
-from wt_core import METRICS, engine_metric_parts, number
+from wtflight.core.metrics import METRICS, engine_metric_parts, number
 
 
 class LayoutHistory:

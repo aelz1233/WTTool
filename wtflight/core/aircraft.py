@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 from urllib.request import Request, urlopen
 
-from wt_core import number
+from wtflight.core.metrics import number
 
 _PACKAGE_BUNDLED = Path(__file__).parents[1] / "resources" / "flight_models"
 BUNDLED = _PACKAGE_BUNDLED if _PACKAGE_BUNDLED.exists() else Path(__file__).parents[2] / "data" / "flight_models"

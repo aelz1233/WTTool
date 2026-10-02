@@ -1,2 +1,1 @@
-from wt_qt import DatabaseUpdater, InstallerDownloader, UpdateChecker  # noqa: F401
-
+from wtflight.ui.main_window import DatabaseUpdater, InstallerDownloader, UpdateChecker  # noqa: F401

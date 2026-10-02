@@ -7,8 +7,8 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-import wt_qt
-from wt_themes import THEMES
+from wtflight.ui import main_window as wt_qt
+from wtflight.ui.theme import THEMES
 
 
 def main():

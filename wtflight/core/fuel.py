@@ -1,2 +1,1 @@
-from wt_features import FuelEstimator  # noqa: F401
-
+from wtflight.core._features import FuelEstimator  # noqa: F401
