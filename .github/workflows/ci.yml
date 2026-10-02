@@ -20,6 +20,12 @@ jobs:
       - run: ruff check .
       # Qt-free domain logic: metrics, alerts, fuel, profiles, aircraft database.
       - run: python -m unittest tests.test_aircraft tests.test_features -v
-      - run: python -m wtflight --self-check self-check-output
-      - if: always()
-        run: Get-Content self-check-output/self-check.json
+      # Hosted runners have no audio device, so only "Audio not loaded" is tolerated.
+      - name: Self-check
+        run: |
+          python -m wtflight --self-check self-check-output
+          $report = Get-Content self-check-output/self-check.json -Raw | ConvertFrom-Json
+          $report | ConvertTo-Json
+          $unexpected = @($report.errors | Where-Object { $_ -ne 'Audio not loaded' })
+          if ($unexpected.Count -gt 0) { exit 1 }
+          exit 0
