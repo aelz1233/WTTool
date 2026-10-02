@@ -6,9 +6,9 @@ $python = Join-Path $projectRoot '.venv\Scripts\python.exe'
 # incompatible ICU/UCRT/OpenSSL DLLs on PATH and contaminate dependency discovery.
 $basePython = & $python -c 'import sys; print(sys.base_prefix)'
 $env:PATH = "$(Split-Path $python);$basePython;$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
-& $python packaging\make_icon.py
+& $python tools\make_icon.py
 if ($LASTEXITCODE -ne 0) { throw 'Icon generation failed' }
-& $python -m PyInstaller --noconfirm --clean --windowed --onedir --name 'WT Flight' --icon data\wt-flight.ico --add-data 'data;data' --add-data 'wtflight\resources;wtflight\resources' --exclude-module PySide6.QtWebEngineCore --exclude-module PySide6.QtWebEngineWidgets --exclude-module PySide6.QtQml --exclude-module PySide6.QtQuick wtflight\__main__.py
+& $python -m PyInstaller --noconfirm --clean --windowed --onedir --name 'WT Flight' --icon wtflight\resources\wt-flight.ico --add-data 'wtflight\resources;wtflight\resources' --exclude-module PySide6.QtWebEngineCore --exclude-module PySide6.QtWebEngineWidgets --exclude-module PySide6.QtQml --exclude-module PySide6.QtQuick wtflight\__main__.py
 if ($LASTEXITCODE -ne 0) { throw 'EXE build failed' }
 foreach ($runtime in @('vcruntime140.dll', 'vcruntime140_1.dll')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot ".venv\Lib\site-packages\PySide6\$runtime") -Destination (Join-Path $projectRoot "dist\WT Flight\_internal\$runtime") -Force
