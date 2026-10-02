@@ -45,7 +45,7 @@ TEAL = "#57e0c3"
 ORANGE = "#ffbd5a"
 RED = "#ff6879"
 HUD_GREEN = "#64be98"
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 GITHUB_REPO = "aelz1233/WTTool"
 GITHUB_RELEASES = f"https://github.com/{GITHUB_REPO}/releases"
 
@@ -1809,7 +1809,7 @@ class MainWindow(FeatureControls, QMainWindow):
             "Цвет обводки": "Outline color", "Убрать показатель": "Remove metric",
             "Удалить группу": "Delete group", "Пределы самолёта": "Aircraft limits",
             "Принудительно обновить данные API": "Force refresh API data",
-            "Версия программы: 1.0.3": "Application version: 1.0.3",
+            "Версия программы: 1.0.4": "Application version: 1.0.4",
         }
         for widget in self.findChildren(QWidget):
             original = widget.property("wt_ru_text")
