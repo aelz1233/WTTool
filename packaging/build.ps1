@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $projectRoot
 $python = Join-Path $projectRoot '.venv\Scripts\python.exe'
+$appVersion = & $python -c 'from wtflight import __version__; print(__version__)'
 # Build against Windows and this environment only: unrelated tools can put
 # incompatible ICU/UCRT/OpenSSL DLLs on PATH and contaminate dependency discovery.
 $basePython = & $python -c 'import sys; print(sys.base_prefix)'
@@ -26,6 +27,11 @@ $report = Get-Content -LiteralPath (Join-Path $checkOutput 'self-check.json') -R
 if (!$report.ok -or !$report.frozen) { throw 'Packaged application check failed' }
 $compiler = Join-Path $projectRoot '.tools\inno\ISCC.exe'
 if (!(Test-Path -LiteralPath $compiler)) { throw 'Install Inno Setup 6 in .tools\inno first' }
-& $compiler packaging\installer.iss
+& $compiler "/DAppVersion=$appVersion" packaging\installer.iss
 if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
-Get-FileHash 'release\WT-Flight-Setup-1.0.8.exe' -Algorithm SHA256 | Format-List
+if ($env:WT_SIGNTOOL -and (Test-Path -LiteralPath $env:WT_SIGNTOOL) -and $env:WT_CERTIFICATE) {
+    & $env:WT_SIGNTOOL sign /fd SHA256 /a /f $env:WT_CERTIFICATE /tr $env:WT_TIMESTAMP_URL `
+        (Join-Path $projectRoot "release\WT-Flight-Setup-$appVersion.exe")
+    if ($LASTEXITCODE -ne 0) { throw 'Installer signing failed' }
+}
+Get-FileHash (Join-Path $projectRoot "release\WT-Flight-Setup-$appVersion.exe") -Algorithm SHA256 | Format-List
