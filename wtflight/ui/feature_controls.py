@@ -436,7 +436,7 @@ class FeatureControls:
             item.setData(Qt.ItemDataRole.UserRole, metric_id)
             self.helicopter_values.addItem(item)
         self.add_helicopter_metric_button.setEnabled(bool(metric_ids))
-        self.helicopter_note.setText("Поля двигателя и ротора обновляются из игры. Выберите строку, чтобы добавить её в макет.")
+        self.helicopter_note.setText(self.tr_text("Поля двигателя и ротора обновляются из игры. Выберите строку, чтобы добавить её в макет."))
 
     def restore_standard_preset(self):
         data = self.preset_box.currentData()
@@ -574,7 +574,7 @@ class FeatureControls:
     def refresh_sound_file_note(self):
         paths = self.settings.data.get("flight", {}).get("sound_files", {})
         names = [f"{key}: {Path(path).name}" for key, path in paths.items() if Path(path).is_file()]
-        self.sound_file_note.setText("Свои: " + " · ".join(names) if names else "Стандартные сигналы")
+        self.sound_file_note.setText(self.tr_text("Свои: ") + " · ".join(names) if names else self.tr_text("Стандартные сигналы"))
 
     def should_show_hud(self):
         if not self.hud_visible:
@@ -663,7 +663,7 @@ class FeatureControls:
                  "RPM 1": 2200, "throttle 1, %": 95, "oil temp 1, C": 85,
                  "water temp 1, C": 100, "AoA, deg": 4.5}
         self.present_sample("demo", state, {"type": aircraft, "compass": 270})
-        self.plane_label.setText("ТЕСТ · " + self.database.display_name(aircraft))
+        self.plane_label.setText(self.tr_text("ТЕСТ · ") + self.database.display_name(aircraft))
 
     def process_audio(self):
         if not self.audio or not self.settings.data.get("sound", True) or self.demo_active or self.sample[0] != "live":

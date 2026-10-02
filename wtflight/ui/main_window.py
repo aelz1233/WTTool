@@ -18,7 +18,7 @@ from urllib.request import urlopen, Request
 from PySide6.QtCore import QMimeData, QPoint, QPointF, QRect, QSize, Qt, QThread, Signal, QSaveFile, QIODevice, QEvent, QTimer
 from PySide6.QtGui import (QBrush, QColor, QDrag, QFont, QFontMetrics, QIcon, QPainter,
                            QPainterPath, QPen, QPixmap, QKeySequence, QImageReader, QShortcut,
-                           QFontDatabase)
+                           QFontDatabase, QAction)
 from PySide6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox,
                                QAbstractSpinBox, QDialog, QDialogButtonBox, QFrame, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem,
@@ -43,6 +43,7 @@ from wtflight.core.models import HudGroup
 from wtflight.core.settings import Settings as _Settings
 from wtflight.ui.tabs import AircraftTab
 from wtflight.services.telemetry import Telemetry
+from wtflight.ui.i18n import UI_TRANSLATIONS
 from wtflight import __version__
 
 
@@ -828,14 +829,15 @@ class HotkeyPanel(QWidget):
             if action is None or action == key:
                 edit.setKeySequence(QKeySequence(self.owner.configured_hotkey(key)))
         if hasattr(self.owner, "hotkey_errors"):
-            errors = [HOTKEYS[k][0] + ": " + v for k, v in self.owner.hotkey_errors.items() if v]
+            errors = [self.owner.tr_text(HOTKEYS[k][0]) + ": " + self.owner.tr_text(v)
+                      for k, v in self.owner.hotkey_errors.items() if v]
             self.feedback.setText("\n".join(errors) if errors else
-                                  "Нажмите новое сочетание, затем ✓. Работает и в игре.")
+                                  self.owner.tr_text("Нажмите новое сочетание, затем ✓. Работает и в игре."))
 
     def apply(self, action):
         sequence = self.edits[action].keySequence().toString(QKeySequence.PortableText)
         ok, error = self.owner.apply_hotkey(action, sequence)
-        self.feedback.setText("Сохранено: " + (sequence or "отключено") if ok else error)
+        self.feedback.setText(self.owner.tr_text("Сохранено: ") + (sequence or self.owner.tr_text("отключено")) if ok else self.owner.tr_text(error))
 
     def disable(self, action):
         self.edits[action].clear()
@@ -964,7 +966,7 @@ class QuickSettings(QDialog):
     def sync(self):
         self.syncing = True
         self.plane.setText(self.owner.database.display_name(self.owner.aircraft) if self.owner.aircraft != "default"
-                           else "Общий профиль · ожидание самолёта")
+                           else self.owner.tr_text("Общий профиль · ожидание самолёта"))
         self.visible_check.setChecked(self.owner.hud_visible)
         self.move_check.setChecked(self.owner.overlay_editing)
         self.group_box.clear()
@@ -972,7 +974,7 @@ class QuickSettings(QDialog):
             self.group_box.addItem(self.owner.group_caption(group), group["id"])
         self.group_box.setCurrentIndex(self.group_box.findData(self.owner.selected_id))
         self.key_panel.sync()
-        self.action_hints.setText("\n".join(f"{self.owner.configured_hotkey(key) or 'Отключено'}  ·  {HOTKEYS[key][0]}"
+        self.action_hints.setText("\n".join(f"{self.owner.configured_hotkey(key) or self.owner.tr_text('Отключено')}  ·  {self.owner.tr_text(HOTKEYS[key][0])}"
                                           for key in ("hud", "move", "editor")))
         self.theme_box.setCurrentIndex(self.theme_box.findData(self.owner.settings.data.get("theme", "graphite")))
         self.syncing = False
@@ -1212,8 +1214,8 @@ class MainWindow(FeatureControls, QMainWindow):
             self.hotkey_errors[action] = error
         self.hotkey = self.hotkeys["menu"]
         self.hotkey_error = self.hotkey_errors["menu"]
-        self.hotkey_hint.setText(f"{self.hotkey.sequence} • быстрое меню" if not self.hotkey_error else
-                                "Клавиша занята • откройте меню")
+        self.hotkey_hint.setText(self.tr_text(f"{self.hotkey.sequence} • быстрое меню") if not self.hotkey_error else
+                                self.tr_text("Клавиша занята • откройте меню"))
         self.quick_settings = QuickSettings(self)
         # Quick menu is created after the main window; apply the selected language to it too.
         self.set_language(self.settings.data.get("language", "en"), save=False)
@@ -1270,7 +1272,7 @@ class MainWindow(FeatureControls, QMainWindow):
         if action == "menu":
             self.settings.data["menu_hotkey"] = sequence
             self.hotkey_error = ""
-            self.hotkey_hint.setText(f"{sequence} • быстрое меню")
+            self.hotkey_hint.setText(self.tr_text(f"{sequence} • быстрое меню"))
         self.settings.save()
         self.main_key_panel.sync(action)
         self.quick_settings.key_panel.sync(action)
@@ -1294,7 +1296,7 @@ class MainWindow(FeatureControls, QMainWindow):
         QApplication.instance().setStyleSheet(theme_style(STYLE, theme))
         for key, button in self.theme_buttons.items():
             button.setChecked(key == theme)
-        self.theme_description.setText(THEMES[theme]["description"])
+        self.theme_description.setText(self.tr_text(THEMES[theme]["description"]))
         if hasattr(self, "quick_settings"):
             self.quick_settings.theme_box.blockSignals(True)
             self.quick_settings.theme_box.setCurrentIndex(self.quick_settings.theme_box.findData(theme))
@@ -1415,6 +1417,22 @@ class MainWindow(FeatureControls, QMainWindow):
         if object_name:
             widget.setObjectName(object_name)
         return widget
+
+    def tr_text(self, value):
+        """Translate runtime status text using the active interface language."""
+        if self.settings.data.get("language", "ru") == "ru":
+            return value
+        result = UI_TRANSLATIONS.get(value, value)
+        if value.startswith("База "):
+            result = value.replace("База ", "Database ", 1)
+            result = result.replace(" моделей · локальная копия", " models · local copy")
+            result = result.replace(" моделей · проверка обновления…", " models · checking for updates…")
+            result = result.replace(" моделей · последняя доступная версия", " models · latest available version")
+            result = result.replace(" · локальная копия", " · local copy")
+            return result
+        if value.startswith("Версия программы:"):
+            return "Application version:" + value.split(":", 1)[1]
+        return result
 
     def build_ui(self):
         central = QWidget()
@@ -1788,6 +1806,25 @@ class MainWindow(FeatureControls, QMainWindow):
             "Принудительно обновить данные API": "Force refresh API data",
             "Версия программы: 1.0.8": "Application version: 1.0.8",
         }
+        translations.update(UI_TRANSLATIONS)
+        def translate(value):
+            if language == "ru":
+                return value
+            result = translations.get(value, value)
+            if result != value:
+                return result
+            if value.startswith("Версия программы:"):
+                return "Application version:" + value.split(":", 1)[1]
+            if value.startswith("База "):
+                result = value.replace("База ", "Database ", 1)
+                result = result.replace(" моделей · локальная копия", " models · local copy")
+                result = result.replace(" моделей · проверка обновления…", " models · checking for updates…")
+                result = result.replace(" моделей · последняя доступная версия", " models · latest available version")
+                result = result.replace(" · локальная копия", " · local copy")
+                return result
+            if value.startswith("Ins • "):
+                return value.replace("Ins • быстрое меню", "Ins • quick menu")
+            return value
         for widget in self.findChildren(QWidget):
             original = widget.property("wt_ru_text")
             if original is None:
@@ -1798,25 +1835,81 @@ class MainWindow(FeatureControls, QMainWindow):
                     original = widget.placeholderText()
                     widget.setProperty("wt_ru_placeholder", original)
             if original is not None and isinstance(widget, (QLabel, QPushButton, QCheckBox)):
-                widget.setText(original if language == "ru" else translations.get(original, original))
+                widget.setText(translate(original))
             placeholder = widget.property("wt_ru_placeholder")
             if placeholder is not None and isinstance(widget, QLineEdit):
-                widget.setPlaceholderText(placeholder if language == "ru" else translations.get(placeholder, placeholder))
+                widget.setPlaceholderText(translate(placeholder))
+            tooltip = widget.property("wt_ru_tooltip")
+            if tooltip is None and widget.toolTip():
+                tooltip = widget.toolTip()
+                widget.setProperty("wt_ru_tooltip", tooltip)
+            if tooltip is not None:
+                widget.setToolTip(translate(tooltip))
+            if isinstance(widget, QComboBox):
+                items = widget.property("wt_ru_items")
+                if items is None:
+                    items = [widget.itemText(index) for index in range(widget.count())]
+                    widget.setProperty("wt_ru_items", items)
+                for index, original_item in enumerate(items):
+                    widget.setItemText(index, translate(original_item))
+            elif isinstance(widget, QListWidget):
+                for item in (widget.item(index) for index in range(widget.count())):
+                    original_item = item.data(Qt.ItemDataRole.UserRole + 1)
+                    if original_item is None:
+                        original_item = item.text()
+                        item.setData(Qt.ItemDataRole.UserRole + 1, original_item)
+                    item.setText(translate(original_item))
+        for action in self.findChildren(QAction):
+            original = action.property("wt_ru_text")
+            if original is None and action.text():
+                original = action.text()
+                action.setProperty("wt_ru_text", original)
+            if original is not None:
+                action.setText(translate(original))
+            tooltip = action.property("wt_ru_tooltip")
+            if tooltip is None and action.toolTip():
+                tooltip = action.toolTip()
+                action.setProperty("wt_ru_tooltip", tooltip)
+            if tooltip is not None:
+                action.setToolTip(translate(tooltip))
+        def translate_tree(item):
+            original = item.data(0, Qt.ItemDataRole.UserRole + 1)
+            if original is None:
+                original = item.text(0)
+                item.setData(0, Qt.ItemDataRole.UserRole + 1, original)
+            item.setText(0, translate(original))
+            for child_index in range(item.childCount()):
+                translate_tree(item.child(child_index))
+        for tree in self.findChildren(QTreeWidget):
+            for index in range(tree.topLevelItemCount()):
+                translate_tree(tree.topLevelItem(index))
         tab_translations = {"Расположение": "Layout", "Вид текста": "Text style", "Самолёт": "Aircraft",
                             "Вертолёт": "Helicopter", "Настройки": "Settings"}
         for index in range(self.tabs.count()):
             ru = self.tabs.tabBar().tabData(index) or self.tabs.tabText(index)
             if self.tabs.tabBar().tabData(index) is None:
                 self.tabs.tabBar().setTabData(index, ru)
-            self.tabs.setTabText(index, ru if language == "ru" else tab_translations.get(ru, ru))
+            self.tabs.setTabText(index, ru if language == "ru" else translate(tab_translations.get(ru, ru)))
         if hasattr(self, "language_box"):
             self.language_box.blockSignals(True)
             self.language_box.setCurrentIndex(self.language_box.findData(language))
             self.language_box.blockSignals(False)
+        if hasattr(self, "quick_settings"):
+            self.quick_settings.setWindowTitle("WT Flight · " + ("Quick menu" if language == "en" else "Быстрое меню"))
+        for name, ru_suffix, en_suffix in (("fuel_critical_spin", " с", " s"),
+                                           ("repeat_spin", " с", " s"),
+                                           ("fuel_spin", " мин", " min")):
+            spin = getattr(self, name, None)
+            if spin is not None:
+                spin.setSuffix(en_suffix if language == "en" else ru_suffix)
         if save:
             self.settings.save()
         if hasattr(self, "palette"):
             self.refresh_palette()
+            self.refresh_layout()
+            self.update_aircraft_panel()
+            if hasattr(self, "quick_settings"):
+                self.quick_settings.sync()
 
     def check_for_updates(self, silent=False):
         if self.update_checker and self.update_checker.isRunning():
@@ -1913,11 +2006,11 @@ class MainWindow(FeatureControls, QMainWindow):
         aircraft = self.aircraft
         known = self.database.resolve(aircraft)
         self.aircraft_name.setText(self.database.display_name(aircraft) if aircraft != "default"
-                                   else "Самолёт определится в бою")
+                                   else self.tr_text("Самолёт определится в бою"))
         self.aircraft_details.setText(
-            ("Определён автоматически · " + aircraft) if known else
-            "Модель ещё не получена из игры" if aircraft == "default" else
-            "Этой модели нет в базе · " + aircraft)
+            (self.tr_text("Определён автоматически · ") + aircraft) if known else
+            self.tr_text("Модель ещё не получена из игры") if aircraft == "default" else
+            self.tr_text("Этой модели нет в базе · ") + aircraft)
         for key, label in self.aircraft_values.items():
             value = limits.get(key)
             text = "—"
@@ -1935,10 +2028,10 @@ class MainWindow(FeatureControls, QMainWindow):
         if limits.get("_sweep_conservative"):
             notes.append("Стреловидность неизвестна: для IAS / Mach взят минимальный предел из таблицы крыла.")
         if not notes:
-            notes.append("Пределы загружаются автоматически при получении модели самолёта из игры.")
+            notes.append(self.tr_text("Пределы загружаются автоматически при получении модели самолёта из игры."))
         self.limit_note.setText(" ".join(notes))
         if not self.db_updater or not self.db_updater.isRunning():
-            self.database_note.setText(f"База {self.database.version} · {len(self.database.models)} моделей · {self.database_status}")
+            self.database_note.setText(self.tr_text(f"База {self.database.version} · {len(self.database.models)} моделей · {self.database_status}"))
 
     def check_database_update(self):
         if self.db_updater and self.db_updater.isRunning():
@@ -2065,12 +2158,13 @@ class MainWindow(FeatureControls, QMainWindow):
         ids = self.available if self.available is not None else list(METRICS)
         count = self.palette.populate(ids, query)
         self.metric_count.setText(str(count))
-        self.palette_hint.setText("Ничего не найдено" if count == 0 else
-                                 "Доступно на этом самолёте" if self.available is not None else
-                                 "В бою список обновится автоматически")
+        self.palette_hint.setText(self.tr_text("Ничего не найдено") if count == 0 else
+                                 self.tr_text("Доступно на этом самолёте") if self.available is not None else
+                                 self.tr_text("В бою список обновится автоматически"))
 
     def refresh_layout(self):
-        self.profile_label.setText("ПРОФИЛЬ: " + (self.aircraft if self.aircraft != "default" else "ОБЩИЙ"))
+        profile = self.aircraft if self.aircraft != "default" else self.tr_text("ОБЩИЙ")
+        self.profile_label.setText(self.tr_text("ПРОФИЛЬ: ") + profile)
         self.canvas.set_groups(self.groups())
         self.canvas.set_sample(self.sample, self.current_limits())
         self.sync_group_selector()
@@ -2091,7 +2185,7 @@ class MainWindow(FeatureControls, QMainWindow):
         self.loading_inspector = True
         self.group_metrics.clear()
         if group:
-            self.inspector_note.setText("Изменения сразу применяются к HUD и сохраняются.")
+            self.inspector_note.setText(self.tr_text("Изменения сразу применяются к HUD и сохраняются."))
             self.title_edit.setText(group.get("title", ""))
             self.style_box.setCurrentIndex(0 if group.get("style") == "text" else 1)
             self.labels_check.setChecked(bool(group.get("labels", True)))
@@ -2109,7 +2203,7 @@ class MainWindow(FeatureControls, QMainWindow):
             for metric_id in group.get("metrics", []):
                 self.group_metrics.addItem(metric_label(metric_id))
         else:
-            self.inspector_note.setText("Выберите блок на макете, чтобы изменить его вид.")
+            self.inspector_note.setText(self.tr_text("Выберите блок на макете, чтобы изменить его вид."))
             self.title_edit.clear()
         self.loading_inspector = False
 
@@ -2277,16 +2371,16 @@ class MainWindow(FeatureControls, QMainWindow):
             if available != self.available:
                 self.available = available
                 self.refresh_palette()
-            self.status.setText("ТЕСТ · ПРИМЕР ДАННЫХ" if mode == "demo" else "В БОЮ  ·  LIVE")
+            self.status.setText(self.tr_text("ТЕСТ · ПРИМЕР ДАННЫХ" if mode == "demo" else "В БОЮ  ·  LIVE"))
             self.status.setProperty("offline", False)
-            self.plane_label.setText(self.database.display_name(aircraft) if aircraft != "default" else "Самолёт не определён")
+            self.plane_label.setText(self.database.display_name(aircraft) if aircraft != "default" else self.tr_text("Самолёт не определён"))
         else:
             if self.available is not None:
                 self.available = None
                 self.refresh_palette()
-            self.status.setText("ОЖИДАНИЕ БОЯ" if mode == "waiting" else "ИГРА НЕ НАЙДЕНА")
+            self.status.setText(self.tr_text("ОЖИДАНИЕ БОЯ" if mode == "waiting" else "ИГРА НЕ НАЙДЕНА"))
             self.status.setProperty("offline", True)
-            self.plane_label.setText("Подключение к 127.0.0.1:8111 автоматически")
+            self.plane_label.setText(self.tr_text("Подключение к 127.0.0.1:8111 автоматически"))
         self.status.style().unpolish(self.status)
         self.status.style().polish(self.status)
         self.canvas.set_sample(self.sample, self.current_limits())
