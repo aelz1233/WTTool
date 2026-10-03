@@ -2,9 +2,11 @@
 import json
 import sys
 import tempfile
+import wave
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
+from PySide6.QtMultimedia import QMediaDevices
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -32,7 +34,12 @@ def run(output):
             try:
                 assert len(window.database.models) > 1000, "Aircraft database missing"
                 assert not window.canvas.background.isNull(), "Default background missing"
-                assert window.audio and all(e.isLoaded() for e in window.audio.effects.values()), "Audio not loaded"
+                assert window.audio, "Audio service missing"
+                for path in window.audio.default_paths.values():
+                    with wave.open(str(path), "rb") as sound:
+                        assert sound.getnframes() > 0, "Empty warning sound"
+                if QMediaDevices.audioOutputs():
+                    assert all(e.isLoaded() for e in window.audio.effects.values()), "Audio not loaded"
                 assert app._wt_translator is not None, "Russian Qt translations missing"
                 window.set_demo_mode(True)
                 QTest.qWait(50)
@@ -47,6 +54,7 @@ def run(output):
                           "frozen": bool(getattr(sys, "frozen", False)),
                           "executable": sys.executable, "models": len(window.database.models),
                           "database": window.database.version,
+                          "audio_output_available": bool(QMediaDevices.audioOutputs()),
                           "hotkey_conflicts": {key: value for key, value in window.hotkey_errors.items() if value}}
                 (output / "self-check.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
                 print(json.dumps(result, ensure_ascii=True), flush=True)
