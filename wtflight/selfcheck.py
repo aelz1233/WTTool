@@ -49,6 +49,7 @@ def run(output):
                           "database": window.database.version,
                           "hotkey_conflicts": {key: value for key, value in window.hotkey_errors.items() if value}}
                 (output / "self-check.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+                print(json.dumps(result, ensure_ascii=True), flush=True)
                 window.stop_workers()
                 window.close_hotkeys()
                 window.quick_settings.hide()
