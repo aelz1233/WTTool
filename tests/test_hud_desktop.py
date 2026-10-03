@@ -366,7 +366,8 @@ class DesktopTests(unittest.TestCase):
         self.assertFalse(w.overlay_editing)
         self.assertTrue(view.windowFlags() & Qt.WindowTransparentForInput)
 
-    @unittest.skipUnless(sys.platform == "win32", "Windows registration")
+    @unittest.skipUnless(sys.platform == "win32" and os.environ.get("QT_QPA_PLATFORM") != "offscreen",
+                         "Requires native Windows event delivery")
     def test_native_insert_and_rebinding_with_conflict(self):
         w = self.window
         if w.hotkey_error:
@@ -485,7 +486,8 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(w.main_key_panel.edits["hud"].keySequence().toString(), "Ctrl+Shift+H")
         self.assertEqual(w.quick_settings.key_panel.edits["hud"].keySequence().toString(), "Ctrl+Shift+H")
 
-    @unittest.skipUnless(sys.platform == "win32", "Windows hotkeys")
+    @unittest.skipUnless(sys.platform == "win32" and os.environ.get("QT_QPA_PLATFORM") != "offscreen",
+                         "Requires native Windows event delivery")
     def test_multiple_native_actions_and_capture_does_not_trigger_action(self):
         w = self.window
         if w.hotkey_error:
@@ -707,6 +709,9 @@ class DesktopTests(unittest.TestCase):
             if all(effect.isLoaded() for effect in w.audio.effects.values()):
                 break
             QTest.qWait(50)
+        from PySide6.QtMultimedia import QMediaDevices
+        if not QMediaDevices.audioOutputs():
+            self.skipTest("Sound paths verified; loading requires an audio output device")
         self.assertTrue(all(effect.isLoaded() for effect in w.audio.effects.values()))
 
     def test_compact_canvas_controls_do_not_overlap(self):
