@@ -1,14 +1,15 @@
 """Opt-in package check: temporary settings, no game or user configuration needed."""
 import json
-from pathlib import Path
 import sys
 import tempfile
+from pathlib import Path
 
 from PySide6.QtCore import QTimer
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from wtflight.ui import main_window as wt_qt
 from wtflight.ui import feature_controls as wt_feature_ui
+from wtflight.ui import main_window as wt_qt
 
 
 def run(output):
@@ -32,7 +33,9 @@ def run(output):
                 assert len(window.database.models) > 1000, "Aircraft database missing"
                 assert not window.canvas.background.isNull(), "Default background missing"
                 assert window.audio and all(e.isLoaded() for e in window.audio.effects.values()), "Audio not loaded"
+                assert app._wt_translator is not None, "Russian Qt translations missing"
                 window.set_demo_mode(True)
+                QTest.qWait(50)
                 window.grab().save(str(output / "installed-editor.png"))
                 window.toggle_quick_settings()
                 assert window.quick_settings.isVisible(), "Quick menu did not open"

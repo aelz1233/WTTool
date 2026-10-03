@@ -15,6 +15,7 @@ foreach ($runtime in @('vcruntime140.dll', 'vcruntime140_1.dll')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot ".venv\Lib\site-packages\PySide6\$runtime") -Destination (Join-Path $projectRoot "dist\WT Flight\_internal\$runtime") -Force
 }
 Copy-Item -LiteralPath README.md -Destination 'dist\WT Flight\README.md'
+Copy-Item -LiteralPath LICENSE -Destination 'dist\WT Flight\LICENSE'
 $checkOutput = Join-Path $projectRoot 'audit_artifacts\build-check'
 $binary = Join-Path $projectRoot 'dist\WT Flight\WT Flight.exe'
 $check = Start-Process -FilePath $binary -ArgumentList "--self-check `"$checkOutput`"" -WindowStyle Hidden -PassThru

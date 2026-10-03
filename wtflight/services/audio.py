@@ -1,8 +1,8 @@
 """Short local warning tones with user-controlled volume."""
 import math
-from pathlib import Path
 import struct
 import wave
+from pathlib import Path
 
 from PySide6.QtCore import QUrl
 from PySide6.QtMultimedia import QSoundEffect

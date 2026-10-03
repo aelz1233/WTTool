@@ -1,11 +1,10 @@
 import io
-import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from wtflight.core.aircraft import AircraftDatabase, BUNDLED, download_database
+from wtflight.core.aircraft import BUNDLED, AircraftDatabase, download_database
 
 
 class AircraftTests(unittest.TestCase):

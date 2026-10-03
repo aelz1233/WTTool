@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from http.client import HTTPException
 from urllib.request import urlopen
 
 from PySide6.QtCore import QThread, Signal
@@ -37,10 +38,10 @@ class Telemetry(QThread):
                             indicators = json.load(response)
                         if not isinstance(indicators, dict) or not indicators.get("valid"):
                             indicators = {}
-                    except (OSError, ValueError):
+                    except (OSError, ValueError, HTTPException):
                         indicators = {}
                     self.sample.emit("live", state, indicators)
-            except (OSError, ValueError):
+            except (OSError, ValueError, HTTPException):
                 self.sample.emit("offline", {}, {})
             self.stop_event.wait(max(0, self.interval - (time.monotonic() - started)))
 

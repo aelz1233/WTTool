@@ -1,7 +1,8 @@
 """Create the application icon using the same mark as the tray."""
 from pathlib import Path
-from PySide6.QtCore import Qt, QRect
-from PySide6.QtGui import QPixmap, QPainter, QColor, QFont
+
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication
 
 app = QApplication([])

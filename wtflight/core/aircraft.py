@@ -5,11 +5,11 @@ The per-wing load convention is documented by SpaceCapo/warthunder-byoh, core_cl
 """
 
 import csv
-from datetime import datetime, timezone
 import io
 import json
-from pathlib import Path
 import re
+from datetime import UTC, datetime
+from pathlib import Path
 from urllib.request import Request, urlopen
 
 from wtflight.core.metrics import number
@@ -46,14 +46,14 @@ def speed_limit(value, sweep=None):
         return values[0] if values[0] > 0 else None, False
     if not values or len(values) % 2:
         return None, False
-    pairs = sorted(zip(values[::2], values[1::2]))
+    pairs = sorted(zip(values[::2], values[1::2], strict=True))
     if any(x < 0 or x > 1 or y <= 0 for x, y in pairs):
         return None, False
     if sweep is None or not 0 <= sweep <= 1:
         return min(y for _, y in pairs), True
     if sweep <= pairs[0][0]:
         return pairs[0][1], False
-    for (left, low), (right, high) in zip(pairs, pairs[1:]):
+    for (left, low), (right, high) in zip(pairs, pairs[1:], strict=False):
         if left < sweep <= right:
             return low + (high - low) * (sweep - left) / (right - left), False
     return pairs[-1][1], False
@@ -123,7 +123,7 @@ class AircraftDatabase:
             result["gear_kmh"] = gear
         flaps = numbers(record.get("CritFlapsSpd"))
         if len(flaps) % 2 == 0:
-            speeds = [speed for ratio, speed in zip(flaps[::2], flaps[1::2]) if ratio > 0 and speed > 0]
+            speeds = [speed for ratio, speed in zip(flaps[::2], flaps[1::2], strict=True) if ratio > 0 and speed > 0]
             if speeds:
                 result["flaps_landing_kmh"] = min(speeds)
         empty_mass = number(record.get("EmptyMass"))
@@ -157,7 +157,7 @@ def download_database(cache_dir, current_version):
     names = read(f"{version}/fm/fm_names_db.csv")
     database = AircraftDatabase(models, names, version)
     payload = {"version": version, "models": models, "names": names,
-               "source": UPSTREAM, "downloaded_at": datetime.now(timezone.utc).isoformat()}
+               "source": UPSTREAM, "downloaded_at": datetime.now(UTC).isoformat()}
     target = Path(cache_dir) / "aircraft_database.json"
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix(".tmp")

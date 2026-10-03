@@ -8,15 +8,32 @@ import wave
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog, QFormLayout,
-                               QDialog, QDialogButtonBox, QHBoxLayout, QInputDialog, QLabel, QListWidget, QListWidgetItem, QMenu,
-                               QMessageBox, QPushButton, QSlider, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFormLayout,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
+)
 
-from wtflight.services.audio import WarningAudio
-from wtflight.core._features import LayoutHistory, FuelEstimator, AlertCooldown, alert_levels, validate_profile
-from wtflight.win32.foreground import game_is_foreground
-from wtflight.ui.controls import SteppedSpinBox
+from wtflight.core._features import AlertCooldown, FuelEstimator, LayoutHistory, alert_levels, validate_profile
 from wtflight.core.metrics import CONFIG_PATH, metric_label, metric_value
+from wtflight.services.audio import WarningAudio
+from wtflight.ui.controls import SteppedSpinBox
+from wtflight.win32.foreground import game_is_foreground
 
 
 class FeatureControls:
@@ -300,6 +317,7 @@ class FeatureControls:
         boxes = [self.preset_box]
         if hasattr(self, "main_preset_box"):
             boxes.append(self.main_preset_box)
+        selections = [box.currentData() for box in boxes]
         for box in boxes:
             box.blockSignals(True)
             box.clear()
@@ -310,11 +328,16 @@ class FeatureControls:
             ("empty", "Пустой"),
         ):
             for box in boxes:
-                box.addItem(label, ("builtin", key))
+                box.addItem(self.tr_text(label), ("builtin", key))
         for name in sorted(self.settings.data.get("saved_layouts", {})):
             for box in boxes:
                 box.addItem(name, ("saved", name))
-        for box in boxes:
+        for box, selection in zip(boxes, selections, strict=True):
+            if selection is not None:
+                index = next((i for i in range(box.count())
+                              if tuple(box.itemData(i)) == tuple(selection)), -1)
+                if index >= 0:
+                    box.setCurrentIndex(index)
             box.blockSignals(False)
         self.update_restore_button()
 
@@ -420,6 +443,9 @@ class FeatureControls:
         live = mode in ("live", "demo") and state.get("valid")
         self.helicopter_title.setText(self.database.display_name(self.aircraft) if live and self.aircraft != "default"
                                       else self.tr_text("Данные вертолёта появятся после входа в бой"))
+        selected = self.helicopter_values.currentItem()
+        selected_id = selected.data(Qt.ItemDataRole.UserRole) if selected else None
+        scroll = self.helicopter_values.verticalScrollBar().value()
         self.helicopter_values.clear()
         if not live:
             self.add_helicopter_metric_button.setEnabled(False)
@@ -438,8 +464,11 @@ class FeatureControls:
             item = QListWidgetItem(f"{label}   {value}")
             item.setData(Qt.ItemDataRole.UserRole, metric_id)
             self.helicopter_values.addItem(item)
+            if metric_id == selected_id:
+                self.helicopter_values.setCurrentItem(item)
+        self.helicopter_values.verticalScrollBar().setValue(scroll)
         self.add_helicopter_metric_button.setEnabled(bool(metric_ids))
-        self.helicopter_note.setText(self.tr_text("Поля двигателя и ротора обновляются из игры. Выберите строку, чтобы добавить её в макет."))
+        self.set_ui_text(self.helicopter_note, "Поля двигателя и ротора обновляются из игры. Выберите строку, чтобы добавить её в макет.")
 
     def restore_standard_preset(self):
         data = self.preset_box.currentData()
@@ -465,8 +494,8 @@ class FeatureControls:
         dialog.setTextValue("")
         buttons = dialog.findChildren(QDialogButtonBox)
         if buttons:
-            buttons[0].button(QDialogButtonBox.Ok).setText(self.tr_text("ОК"))
-            buttons[0].button(QDialogButtonBox.Cancel).setText(self.tr_text("Отмена"))
+            self.set_ui_text(buttons[0].button(QDialogButtonBox.Ok), "ОК")
+            self.set_ui_text(buttons[0].button(QDialogButtonBox.Cancel), "Отмена")
         ok = dialog.exec() == QDialog.DialogCode.Accepted
         name = dialog.textValue()
         name = name.strip()[:60]

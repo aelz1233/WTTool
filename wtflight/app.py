@@ -7,10 +7,6 @@ import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from . import APP_NAME, __version__
-from .ui.main_window import main as run
-from .selfcheck import run as run_selfcheck
-
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -24,6 +20,8 @@ def main(argv=None):
         logging.basicConfig(level=logging.ERROR, handlers=[RotatingFileHandler(
             log_dir / "errors.log", maxBytes=1_000_000, backupCount=2, encoding="utf-8")])
     if len(argv) == 2 and argv[0] == "--self-check":
+        from .selfcheck import run as run_selfcheck
         return run_selfcheck(Path(argv[1]))
+    from .ui.main_window import main as run
     run()
     return 0

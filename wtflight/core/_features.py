@@ -125,7 +125,7 @@ def alert_levels(state, limits, fuel_minutes=3, aoa_limit=15, caution_ratio=.9,
         ratio = max((v for v in ratios if v is not None), default=0)
         if name == "fuel":
             seconds = number(state.get("fuel_seconds"))
-            if seconds is not None and seconds <= fuel_minutes * 60:
+            if seconds is not None and seconds <= max(fuel_minutes * 60, fuel_critical_seconds):
                 result[name] = "critical" if seconds <= fuel_critical_seconds else "caution"
             continue
         threshold = caution_ratio
@@ -164,7 +164,7 @@ def validate_profile(payload):
         if not isinstance(source, dict):
             raise ValueError("Неверный формат группы")
         metrics = source.get("metrics")
-        if not isinstance(metrics, list) or not 1 <= len(metrics) <= 60:
+        if not isinstance(metrics, list) or not 0 <= len(metrics) <= 60:
             raise ValueError("Неверный список показателей")
         if any(not isinstance(m, str) or len(m) > 160 or
                (m not in METRICS and not engine_metric_parts(m) and not m.startswith(("state:", "indicators:"))) for m in metrics):

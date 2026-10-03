@@ -4,48 +4,111 @@ from __future__ import annotations
 
 import copy
 import hashlib
-from html import escape
 import json
-import os
+import re
 import subprocess
 import tempfile
 import threading
 import time
 import uuid
+from contextlib import suppress
+from html import escape
+from http.client import HTTPException
 from pathlib import Path
-from urllib.request import urlopen, Request
+from urllib.request import Request, urlopen
 
-from PySide6.QtCore import QMimeData, QPoint, QPointF, QRect, QSize, Qt, QThread, Signal, QSaveFile, QIODevice, QEvent, QTimer
-from PySide6.QtGui import (QBrush, QColor, QDrag, QFont, QFontMetrics, QIcon, QPainter,
-                           QPainterPath, QPen, QPixmap, QKeySequence, QImageReader, QShortcut,
-                           QFontDatabase, QAction)
-from PySide6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox,
-                               QAbstractSpinBox, QDialog, QDialogButtonBox, QFrame, QHBoxLayout,
-                               QLabel, QLineEdit, QListWidget, QListWidgetItem,
-                               QMainWindow, QMenu, QMessageBox, QPushButton,
-                               QScrollArea, QSlider, QSpinBox, QSystemTrayIcon,
-                               QVBoxLayout, QWidget, QTabWidget, QFormLayout, QKeySequenceEdit,
-                               QFileDialog, QTreeWidget, QTreeWidgetItem, QHeaderView, QProgressDialog)
-from PySide6.QtCore import QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import (
+    QEvent,
+    QIODevice,
+    QLibraryInfo,
+    QMimeData,
+    QPoint,
+    QPointF,
+    QRect,
+    QSaveFile,
+    QSignalBlocker,
+    QSize,
+    Qt,
+    QThread,
+    QTimer,
+    QTranslator,
+    QUrl,
+    Signal,
+)
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QDesktopServices,
+    QDrag,
+    QFont,
+    QFontMetrics,
+    QIcon,
+    QImageReader,
+    QKeySequence,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QShortcut,
+)
+from PySide6.QtWidgets import (
+    QAbstractSpinBox,
+    QApplication,
+    QCheckBox,
+    QColorDialog,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QKeySequenceEdit,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QProgressDialog,
+    QPushButton,
+    QScrollArea,
+    QSlider,
+    QSystemTrayIcon,
+    QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
-from wtflight.core.metrics import (CONFIG_PATH, METRICS, available_metrics, evaluate,
-                     metric_help, metric_label, metric_value, number, ENGINE_FIELDS,
-                     engine_metric_parts, expand_engine_metric)
-from wtflight.win32.hotkey import GlobalHotkey, HOTKEYS
+from wtflight import __version__
+from wtflight.core._features import add_margins, metric_risk
 from wtflight.core.aircraft import AircraftDatabase, download_database, normalized_id
-from wtflight.ui.theme import THEMES, HUD_STYLES, theme_style
-from wtflight.ui.canvas import FlightCanvas
-from wtflight.core._features import metric_risk, add_margins
-from wtflight.ui.feature_controls import FeatureControls
-from wtflight.ui.controls import SteppedSpinBox
+from wtflight.core.metrics import (
+    CONFIG_PATH,
+    ENGINE_FIELDS,
+    METRICS,
+    available_metrics,
+    engine_metric_parts,
+    evaluate,
+    expand_engine_metric,
+    metric_help,
+    metric_label,
+    metric_value,
+    number,
+)
 from wtflight.core.models import HudGroup
 from wtflight.core.settings import Settings as _Settings
-from wtflight.ui.tabs import AircraftTab
 from wtflight.services.telemetry import Telemetry
+from wtflight.ui.canvas import FlightCanvas
+from wtflight.ui.controls import SteppedSpinBox
+from wtflight.ui.feature_controls import FeatureControls
 from wtflight.ui.i18n import UI_TRANSLATIONS
-from wtflight import __version__
-
+from wtflight.ui.tabs import AircraftTab
+from wtflight.ui.theme import HUD_STYLES, THEMES, theme_style
+from wtflight.win32.hotkey import HOTKEYS, GlobalHotkey
 
 API = "http://127.0.0.1:8111"
 MIME = "application/x-wt-metric"
@@ -299,7 +362,7 @@ class DatabaseUpdater(QThread):
     def run(self):
         try:
             self.completed.emit(download_database(self.cache_dir, self.version), "")
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, HTTPException) as error:
             self.completed.emit(None, str(error))
 
 
@@ -319,13 +382,14 @@ class UpdateChecker(QThread):
                 raise ValueError("GitHub вернул неожиданный ответ")
             tag = str(payload.get("tag_name", "")).strip()
             version = tag.lstrip("vV")
-            asset_item = next((item for item in payload.get("assets", [])
-                               if str(item.get("name", "")).lower().endswith(".exe")), {})
+            assets = payload.get("assets") or []
+            asset_item = next((item for item in assets if isinstance(item, dict)
+                               and str(item.get("name", "")).lower().endswith(".exe")), {})
             asset = asset_item.get("browser_download_url", "")
             self.completed.emit({"tag": tag, "version": version, "url": payload.get("html_url", GITHUB_RELEASES),
                                  "asset": asset, "digest": asset_item.get("digest", ""),
                                  "name": payload.get("name", tag)}, "")
-        except (OSError, ValueError, KeyError, TypeError) as error:
+        except (OSError, ValueError, KeyError, TypeError, HTTPException) as error:
             self.completed.emit(None, str(error))
 
 
@@ -343,14 +407,19 @@ class InstallerDownloader(QThread):
         self.cancel_event.set()
 
     def run(self):
+        target = None
+        partial = None
         try:
-            target = Path(tempfile.gettempdir()) / self.filename
+            if not re.fullmatch(r"[a-f0-9]{64}", self.expected_digest):
+                raise ValueError("GitHub не предоставил SHA-256 установщика")
+            target = Path(tempfile.mkdtemp(prefix="wtflight-update-")) / Path(self.filename).name
+            partial = target.with_suffix(".part")
             request = Request(self.url, headers={"User-Agent": "WT-Flight-Assistant"})
-            with urlopen(request, timeout=20) as response:
+            with urlopen(request, timeout=5) as response:
                 total = int(response.headers.get("Content-Length", "0") or 0)
                 received = 0
                 digest = hashlib.sha256()
-                with target.open("wb") as output:
+                with partial.open("wb") as output:
                     while True:
                         if self.cancel_event.is_set():
                             raise RuntimeError("Отменено пользователем")
@@ -362,15 +431,21 @@ class InstallerDownloader(QThread):
                         received += len(chunk)
                         if total:
                             self.progress.emit(min(100, int(received * 100 / total)))
-            actual = digest.hexdigest().lower()
-            if self.expected_digest and actual != self.expected_digest:
-                target.unlink(missing_ok=True)
-                raise ValueError("Проверка SHA-256 установщика не пройдена")
-            self.completed.emit(str(target), "")
-        except (OSError, ValueError, RuntimeError) as error:
-            target = Path(tempfile.gettempdir()) / self.filename
             if self.cancel_event.is_set():
-                target.unlink(missing_ok=True)
+                raise RuntimeError("Отменено пользователем")
+            if not received or (total and received != total):
+                raise ValueError("Установщик скачан не полностью")
+            actual = digest.hexdigest().lower()
+            if actual != self.expected_digest:
+                raise ValueError("Проверка SHA-256 установщика не пройдена")
+            partial.replace(target)
+            self.completed.emit(str(target), "")
+        except (OSError, ValueError, RuntimeError, HTTPException) as error:
+            with suppress(OSError):
+                if partial is not None:
+                    partial.unlink(missing_ok=True)
+                if target is not None:
+                    target.parent.rmdir()
             self.completed.emit("", str(error))
 
 
@@ -379,7 +454,8 @@ def warning_for(sample, limits):
     if mode not in ("live", "demo"):
         return "", ""
     categories = state.get("_warning_categories", {})
-    enabled = lambda key: categories.get(key, True)
+    def enabled(key):
+        return categories.get(key, True)
     caution_ratio = number(state.get("_warning_ratio")) or .9
     severity, message = evaluate(number(state.get("IAS, km/h")), number(state.get("Ny")),
                     number(limits.get("positive_g")) if enabled("g") else None,
@@ -395,7 +471,8 @@ def warning_for(sample, limits):
     elif mach is not None and max_mach and mach >= max_mach * caution_ratio and severity not in ("critical", "caution"):
         severity, message = "caution", "Близко к пределу MACH"
     fuel_seconds = number(state.get("fuel_seconds"))
-    if enabled("fuel") and fuel_seconds is not None and fuel_seconds <= state.get("_fuel_minutes", 3) * 60:
+    if enabled("fuel") and fuel_seconds is not None and fuel_seconds <= max(
+            state.get("_fuel_minutes", 3) * 60, state.get("_fuel_critical_seconds", 60)):
         fuel_severity = "critical" if fuel_seconds <= state.get("_fuel_critical_seconds", 60) else "caution"
         if severity not in ("critical", "caution"):
             severity, message = fuel_severity, "МАЛО ТОПЛИВА"
@@ -472,7 +549,7 @@ class GroupView(QWidget):
         if self.group.get("title_visible"):
             title = self.group.get("title", "БЛОК")
             if is_english_ui():
-                title = {"БЛОК": "BLOCK", "НОВАЯ ГРУППА": "NEW GROUP", "ДВИГАТЕЛЬ": "ENGINE"}.get(title, title)
+                title = {"БЛОК": "BLOCK", "НОВЫЙ БЛОК": "NEW BLOCK", "НОВАЯ ГРУППА": "NEW GROUP", "ДВИГАТЕЛЬ": "ENGINE"}.get(title, title)
             lines.append((title, "", "title", "__title__"))
         for configured_metric in self.group.get("metrics", []):
             metric_ids = expand_engine_metric(configured_metric, state) if active else [configured_metric]
@@ -493,6 +570,18 @@ class GroupView(QWidget):
                              if self.group.get("compact_labels", True) else metric_label_for_ui(metric_id))
                     label = label.upper() if self.group.get("labels", True) else ""
                     risk = metric_risk(metric_id, state, self.limits, state.get("_fuel_minutes", 3)) if active else None
+                    category = ("speed" if metric_id in ("ias", "tas", "mach", "ias_margin", "mach_margin") else
+                                "g" if metric_id in ("g", "g_margin_pos", "g_margin_neg") else
+                                "fuel" if metric_id in ("fuel", "fuel_percent", "fuel_time", "fuel_flow") else
+                                "stall" if metric_id == "aoa" else None)
+                    if category and not state.get("_warning_categories", {}).get(category, True):
+                        risk = None
+                    elif active and category == "fuel":
+                        seconds = number(state.get("fuel_seconds"))
+                        early = max(state.get("_fuel_minutes", 3) * 60, state.get("_fuel_critical_seconds", 60))
+                        critical = state.get("_fuel_critical_seconds", 60)
+                        risk = ("critical" if seconds is not None and seconds <= critical else
+                                "caution" if seconds is not None and seconds <= early else None)
                     lines.append((label, value, risk if risk is not None else "normal", metric_id))
         return lines
 
@@ -544,13 +633,6 @@ class GroupView(QWidget):
             level = alert_level(tone, number(self.sample[1].get("_warning_ratio")) or .9)
             tone_color = RED if tone == "critical" else ORANGE if tone == "caution" else g.get("color", INK)
             critical_row, caution_row = level == "critical", level == "caution"
-            if not level and isinstance(tone, (float, int)) and tone > .75:
-                start = QColor(g.get("color", INK)) if tone < .9 else QColor(ORANGE)
-                end = QColor(ORANGE if tone < .9 else RED)
-                blend = min(1, max(0, (tone - .75) / .15 if tone < .9 else (tone - .9) / .1))
-                tone_color = QColor(round(start.red() + (end.red() - start.red()) * blend),
-                                    round(start.green() + (end.green() - start.green()) * blend),
-                                    round(start.blue() + (end.blue() - start.blue()) * blend))
             if tone in ("title", "unset"):
                 tone_color = g.get("accent", TEAL) if tone == "title" else MUTED
             label_color = RED if critical_row else ORANGE if caution_row else g.get("accent", TEAL)
@@ -561,12 +643,12 @@ class GroupView(QWidget):
                 painter.setPen(QColor(4, 12, 25, 190))
                 painter.drawText(x + 1, y + 1, label)
                 painter.drawText(x + label_width + (gap if label and value else 0) + 1, y + 1, value)
-            def draw_hud_text(text, left, fill):
+            def draw_hud_text(text, left, fill, baseline=y):
                 if not text:
                     return
                 outline = g.get("outline", True)
                 path = QPainterPath()
-                path.addText(float(left), float(y), painter.font(), text)
+                path.addText(float(left), float(baseline), painter.font(), text)
                 if outline:
                     pen = QPen(QColor(g.get("outline_color", "#07140f")),
                                float(g.get("outline_width", 1.4)), Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
@@ -916,7 +998,7 @@ class HotkeyPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
-        for action, (label, default) in HOTKEYS.items():
+        for action, (label, _default) in HOTKEYS.items():
             layout.addWidget(owner.text(label, "muted"))
             row = QHBoxLayout()
             row.setSpacing(5)
@@ -1106,7 +1188,10 @@ class QuickSettings(QDialog):
             widget.setEnabled(bool(group))
         if group:
             self.style_box.setCurrentIndex(0 if group.get("style") == "text" else 1)
-            self.font_box.setCurrentText(group.get("font_family", "Consolas"))
+            family = group.get("font_family", "Consolas")
+            if self.font_box.findText(family) < 0:
+                self.font_box.addItem(family)
+            self.font_box.setCurrentText(family)
             self.hud_style_box.setCurrentIndex(self.hud_style_box.findData(group.get("hud_style", "wtrti")))
             self.size_spin.setValue(group.get("size", 18))
             self.shadow.setChecked(group.get("shadow", True))
@@ -1161,7 +1246,7 @@ class QuickSettings(QDialog):
         group = self.owner.selected_group()
         if not group:
             return
-        color = QColorDialog.getColor(QColor(group.get(key, HUD_GREEN)), self, "Цвет HUD")
+        color = QColorDialog.getColor(QColor(group.get(key, HUD_GREEN)), self, self.owner.tr_text("Цвет HUD"))
         if color.isValid():
             group[key] = color.name()
             self.owner.settings.save()
@@ -1393,7 +1478,7 @@ class MainWindow(FeatureControls, QMainWindow):
         if action == "menu":
             self.settings.data["menu_hotkey"] = sequence
             self.hotkey_error = ""
-            self.hotkey_hint.setText(self.tr_text(f"{sequence} • быстрое меню"))
+            self.set_ui_text(self.hotkey_hint, f"{sequence} • быстрое меню")
         self.settings.save()
         self.main_key_panel.sync(action)
         self.quick_settings.key_panel.sync(action)
@@ -1417,7 +1502,7 @@ class MainWindow(FeatureControls, QMainWindow):
         QApplication.instance().setStyleSheet(theme_style(STYLE, theme))
         for key, button in self.theme_buttons.items():
             button.setChecked(key == theme)
-        self.theme_description.setText(self.tr_text(THEMES[theme]["description"]))
+        self.set_ui_text(self.theme_description, THEMES[theme]["description"])
         if hasattr(self, "quick_settings"):
             self.quick_settings.theme_box.blockSignals(True)
             self.quick_settings.theme_box.setCurrentIndex(self.quick_settings.theme_box.findData(theme))
@@ -1569,8 +1654,17 @@ class MainWindow(FeatureControls, QMainWindow):
             result = result.replace(" · нет связи, локальная копия", " · offline, local copy")
             result = result.replace(" · локальная копия", " · local copy")
             result = result.replace(" · последняя доступная версия", " · latest available version")
+            result = result.replace("моделей", "models").replace("проверка…", "checking…")
             return result
+        if value.endswith(" • быстрое меню"):
+            return value.replace(" • быстрое меню", " • quick menu")
+        if value.startswith("Некорректное значение "):
+            return value.replace("Некорректное значение ", "Invalid value: ", 1)
         return result
+
+    def set_ui_text(self, widget, source):
+        widget.setProperty("wt_ru_text", source)
+        widget.setText(self.tr_text(source))
 
     def metric_label_ui(self, metric_id):
         return metric_label_for_ui(metric_id)
@@ -1669,15 +1763,18 @@ class MainWindow(FeatureControls, QMainWindow):
         self.main_preset_box.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.main_preset_box.setToolTip("Готовые и сохранённые конфигурации оверлея")
         profile_row.addWidget(self.main_preset_box, 1)
-        self.apply_main_preset_button = QPushButton("Применить")
+        self.apply_main_preset_button = QPushButton("✓")
+        self.apply_main_preset_button.setFixedWidth(34)
         self.apply_main_preset_button.setToolTip("Применить макет к текущему профилю самолёта")
         self.apply_main_preset_button.clicked.connect(lambda: self.apply_preset(self.main_preset_box))
         profile_row.addWidget(self.apply_main_preset_button)
-        self.overwrite_main_preset_button = QPushButton("Сохранить")
+        self.overwrite_main_preset_button = QPushButton("↻")
+        self.overwrite_main_preset_button.setFixedWidth(34)
         self.overwrite_main_preset_button.setToolTip("Перезаписать выбранный сохранённый конфиг текущим макетом")
         self.overwrite_main_preset_button.clicked.connect(lambda: self.overwrite_preset(self.main_preset_box))
         profile_row.addWidget(self.overwrite_main_preset_button)
-        self.delete_main_preset_button = QPushButton("Удалить")
+        self.delete_main_preset_button = QPushButton("×")
+        self.delete_main_preset_button.setFixedWidth(34)
         self.delete_main_preset_button.setObjectName("danger")
         self.delete_main_preset_button.setToolTip("Удалить выбранный сохранённый конфиг")
         self.delete_main_preset_button.clicked.connect(lambda: self.delete_preset(self.main_preset_box))
@@ -1896,79 +1993,26 @@ class MainWindow(FeatureControls, QMainWindow):
     def set_language(self, language="ru", save=True):
         language = language if language in ("ru", "en") else "ru"
         self.settings.data["language"] = language
-        QApplication.instance().setProperty("language", language)
-        translations = {
-            "ОЖИДАНИЕ ИГРЫ": "WAITING FOR GAME", "Тест": "Demo", "Обновить": "Update",
-            "Скачать и установить": "Download and install",
-            "Подключение к игре автоматически": "Connecting to the game automatically",
-            "Самолёт определится в бою": "Aircraft will be detected in battle",
-            "Модель ещё не получена из игры": "The game has not provided an aircraft model yet",
-            "Данные появятся в бою": "Data appears in battle", "Сброс": "Reset",
-            "Расположение": "Layout", "Вид текста": "Text style", "Самолёт": "Aircraft",
-            "Вертолёт": "Helicopter", "Настройки": "Settings", "ПОКАЗАТЕЛИ": "METRICS",
-            "Поиск · IAS, топливо…": "Search · IAS, fuel…", "Данные появятся в бою": "Data appears in battle",
-            "ПРОФИЛЬ: ОБЩИЙ": "PROFILE: DEFAULT", "Макет": "Layout", "Применить": "Apply",
-            "Сохранить": "Save", "Удалить": "Delete", "Быстрое меню": "Quick menu",
-            "Показать HUD": "Show HUD", "Оформление выбранного текста": "Style selected text",
-            "＋ Группа": "＋ Group", "ОФОРМЛЕНИЕ ПРОГРАММЫ": "APP APPEARANCE",
-            "ГЛОБАЛЬНЫЕ КЛАВИШИ": "GLOBAL HOTKEYS", "Язык интерфейса": "Interface language",
-            "Проверить обновления": "Check for updates", "ОБНОВЛЕНИЯ": "UPDATES",
-            "Вписать": "Fit", "Выравнивание и привязка": "Alignment and snapping",
-            "Инструменты макета": "Layout tools", "Показать сетку": "Show grid",
-            "Сбросить расположение": "Reset layout", "Загрузить фон…": "Load background…",
-            "Убрать фон": "Remove background", "Сохранить макет как…": "Save layout as…",
-            "Импорт макета…": "Import layout…", "Экспорт макета…": "Export layout…",
-            "Поведение HUD": "HUD behavior", "ПОВЕДЕНИЕ HUD": "HUD BEHAVIOR",
-            "Скрывать HUD вне вылета": "Hide HUD outside a sortie",
-            "Скрывать поверх других программ": "Hide when other apps are active",
-            "Частота данных": "Data update rate", "Критический AoA": "Critical AoA",
-            "ПРЕДУПРЕЖДЕНИЯ HUD": "HUD WARNINGS", "Скорость": "Speed", "Перегрузка": "G-load",
-            "Топливо": "Fuel", "Сваливание": "Stall", "Раннее предупреждение": "Early warning",
-            "Критическое топливо": "Critical fuel", "ЗВУКОВЫЕ ПРЕДУПРЕЖДЕНИЯ": "AUDIO WARNINGS",
-            "Включить звук": "Enable sound", "Громкость": "Volume", "Пауза между сигналами": "Alert repeat delay",
-            "Предупреждать о топливе за": "Warn about fuel with", "Прослушать": "Play",
-            "Свой WAV…": "Custom WAV…", "Стандарт": "Default", "Стандартные сигналы": "Default sounds",
-            "Профили": "Profiles", "ГОТОВЫЕ И СОХРАНЁННЫЕ МАКЕТЫ": "BUILT-IN AND SAVED LAYOUTS",
-            "Сохранить как…": "Save as…", "Импорт…": "Import…", "Экспорт…": "Export…",
-            "Сохранить изменения": "Save changes", "Удалить конфиг": "Delete config",
-            "Восстановить выбранный стандартный макет": "Restore selected built-in layout",
-            "ТЕСТ БЕЗ ЗАПУСКА ИГРЫ": "DEMO WITHOUT THE GAME", "Обычный полёт": "Normal flight",
-            "Превышение скорости": "Overspeed", "Высокая перегрузка": "High G-load", "Мало топлива": "Low fuel",
-            "Ракеты: направление угрозы недоступно в используемом локальном API.": "Missile direction is not available in the local API.",
-            "Данные вертолёта появятся после входа в бой": "Helicopter data appears after entering battle",
-            "Применить макет вертолёта": "Apply helicopter layout", "Добавить в группу": "Add to group",
-            "ВЕРТОЛЁТ": "HELICOPTER", "Показать HUD": "Show HUD", "Перемещать текст мышью": "Move text with mouse",
-            "Открыть редактор": "Open editor", "Готово · Esc": "Done · Esc", "Клавиши": "Hotkeys",
-            "Оформление программы": "App appearance", "ОФОРМЛЕНИЕ ПРОГРАММЫ": "APP APPEARANCE",
-            "Пределы самолёта": "Aircraft limits", "Автоматические пределы из базы": "Automatic limits from database",
-            "Шрифт": "Font", "Размер": "Size", "Название": "Name", "Отображение": "Display",
-            "Дополнительные настройки": "Additional settings", "Подписи": "Labels",
-            "Название группы": "Group title", "Жирный": "Bold", "Тень текста": "Text shadow",
-            "Обводка": "Outline", "Цвет значений": "Value color", "Цвет подписей": "Label color",
-            "Цвет обводки": "Outline color", "Убрать показатель": "Remove metric",
-            "Удалить группу": "Delete group", "Пределы самолёта": "Aircraft limits",
-            "Принудительно обновить данные API": "Force refresh API data",
-            "Версия программы: 1.0.8": "Application version: 1.0.8",
-        }
-        translations.update(UI_TRANSLATIONS)
-        def translate(value):
-            if language == "ru":
-                return value
-            result = translations.get(value, value)
-            if result != value:
-                return result
-            if value.startswith("Версия программы:"):
-                return "Application version:" + value.split(":", 1)[1]
-            if value.startswith("База "):
-                result = value.replace("База ", "Database ", 1)
-                result = result.replace(" моделей · локальная копия", " models · local copy")
-                result = result.replace(" моделей · проверка обновления…", " models · checking for updates…")
-                result = result.replace(" моделей · последняя доступная версия", " models · latest available version")
-                result = result.replace(" · локальная копия", " · local copy")
-                return result
-            if value.startswith("Ins • "):
-                return value.replace("Ins • быстрое меню", "Ins • quick menu")
-            return value
+        app = QApplication.instance()
+        app.setProperty("language", language)
+        previous = getattr(app, "_wt_translator", None)
+        if previous is not None:
+            app.removeTranslator(previous)
+            previous.deleteLater()
+        app._wt_translator = None
+        if language == "ru":
+            translator = QTranslator(app)
+            if translator.load("qtbase_ru", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
+                app.installTranslator(translator)
+                app._wt_translator = translator
+        translate = self.tr_text
+        # Controls rebuilt from profile/user data must never cache translated labels.
+        dynamic_combos = {getattr(self, name, None) for name in
+                          ("main_preset_box", "preset_box", "group_selector", "screen_box", "font_box")}
+        if hasattr(self, "quick_settings"):
+            dynamic_combos.add(self.quick_settings.group_box)
+            dynamic_combos.add(self.quick_settings.font_box)
+        blockers = [QSignalBlocker(widget) for widget in self.findChildren(QWidget)]
         for widget in self.findChildren(QWidget):
             original = widget.property("wt_ru_text")
             if original is None:
@@ -1989,20 +2033,13 @@ class MainWindow(FeatureControls, QMainWindow):
                 widget.setProperty("wt_ru_tooltip", tooltip)
             if tooltip is not None:
                 widget.setToolTip(translate(tooltip))
-            if isinstance(widget, QComboBox):
+            if isinstance(widget, QComboBox) and widget not in dynamic_combos:
                 items = widget.property("wt_ru_items")
                 if items is None:
                     items = [widget.itemText(index) for index in range(widget.count())]
                     widget.setProperty("wt_ru_items", items)
                 for index, original_item in enumerate(items):
                     widget.setItemText(index, translate(original_item))
-            elif isinstance(widget, QListWidget):
-                for item in (widget.item(index) for index in range(widget.count())):
-                    original_item = item.data(Qt.ItemDataRole.UserRole + 1)
-                    if original_item is None:
-                        original_item = item.text()
-                        item.setData(Qt.ItemDataRole.UserRole + 1, original_item)
-                    item.setText(translate(original_item))
         for action in self.findChildren(QAction):
             original = action.property("wt_ru_text")
             if original is None and action.text():
@@ -2016,28 +2053,23 @@ class MainWindow(FeatureControls, QMainWindow):
                 action.setProperty("wt_ru_tooltip", tooltip)
             if tooltip is not None:
                 action.setToolTip(translate(tooltip))
-        def translate_tree(item):
-            original = item.data(0, Qt.ItemDataRole.UserRole + 1)
-            if original is None:
-                original = item.text(0)
-                item.setData(0, Qt.ItemDataRole.UserRole + 1, original)
-            item.setText(0, translate(original))
-            for child_index in range(item.childCount()):
-                translate_tree(item.child(child_index))
-        for tree in self.findChildren(QTreeWidget):
-            for index in range(tree.topLevelItemCount()):
-                translate_tree(tree.topLevelItem(index))
-        tab_translations = {"Расположение": "Layout", "Вид текста": "Text style", "Самолёт": "Aircraft",
-                            "Вертолёт": "Helicopter", "Настройки": "Settings"}
-        for index in range(self.tabs.count()):
-            ru = self.tabs.tabBar().tabData(index) or self.tabs.tabText(index)
-            if self.tabs.tabBar().tabData(index) is None:
-                self.tabs.tabBar().setTabData(index, ru)
-            self.tabs.setTabText(index, ru if language == "ru" else translate(tab_translations.get(ru, ru)))
+        for tabs in self.findChildren(QTabWidget):
+            for index in range(tabs.count()):
+                ru = tabs.tabBar().tabData(index)
+                if ru is None:
+                    ru = tabs.tabText(index)
+                    tabs.tabBar().setTabData(index, ru)
+                tabs.setTabText(index, translate(ru))
+        # Restore signal delivery only after all static controls were translated.
+        del blockers
         if hasattr(self, "language_box"):
             self.language_box.blockSignals(True)
             self.language_box.setCurrentIndex(self.language_box.findData(language))
             self.language_box.blockSignals(False)
+        for name, source in (("apply_main_preset_button", "Применить"),
+                             ("overwrite_main_preset_button", "Сохранить"),
+                             ("delete_main_preset_button", "Удалить")):
+            getattr(self, name).setAccessibleName(translate(source))
         if hasattr(self, "quick_settings"):
             self.quick_settings.setWindowTitle("WT Flight · " + ("Quick menu" if language == "en" else "Быстрое меню"))
         self.setWindowTitle("WT Flight · " + ("HUD Editor" if language == "en" else "Редактор HUD"))
@@ -2060,6 +2092,15 @@ class MainWindow(FeatureControls, QMainWindow):
             self.refresh_palette()
             self.refresh_layout()
             self.update_aircraft_panel()
+            self.update_helicopter_panel()
+            self.refresh_presets()
+            self.refresh_sound_file_note()
+            self.set_ui_text(self.theme_description, THEMES[self.settings.data.get("theme", "graphite")]["description"])
+            if hasattr(self, "hotkeys"):
+                hint = (f"{self.configured_hotkey('menu')} • быстрое меню" if not self.hotkey_error else
+                        "Клавиша занята • откройте меню")
+                self.set_ui_text(self.hotkey_hint, hint)
+                self.main_key_panel.sync()
             if hasattr(self, "quick_settings"):
                 self.quick_settings.sync()
 
@@ -2067,7 +2108,7 @@ class MainWindow(FeatureControls, QMainWindow):
         if self.update_checker and self.update_checker.isRunning():
             return
         if not silent:
-            self.update_status.setText(self.tr_text("Проверка GitHub…"))
+            self.set_ui_text(self.update_status, "Проверка GitHub…")
         self.update_button.setEnabled(False)
         if hasattr(self, "update_check_button"):
             self.update_check_button.setEnabled(False)
@@ -2077,10 +2118,10 @@ class MainWindow(FeatureControls, QMainWindow):
 
     @staticmethod
     def _version_tuple(value):
-        try:
-            return tuple(int(part) for part in str(value).lstrip("vV").split(".")[:3])
-        except (TypeError, ValueError):
+        value = str(value).lstrip("vV")
+        if not re.fullmatch(r"\d+(?:\.\d+){0,2}", value):
             return (0, 0, 0)
+        return tuple(int(part) for part in value.split(".")) + (0,) * (2 - value.count("."))
 
     def on_update_checked(self, info, error, silent=False):
         self.update_button.setEnabled(True)
@@ -2088,19 +2129,19 @@ class MainWindow(FeatureControls, QMainWindow):
             self.update_check_button.setEnabled(True)
         if error or not info:
             if not silent:
-                self.update_status.setText(self.tr_text("Не удалось проверить обновления"))
+                self.set_ui_text(self.update_status, "Не удалось проверить обновления")
                 QMessageBox.warning(self, self.tr_text("Проверка обновлений"),
                                      self.tr_text("GitHub недоступен. Проверьте интернет-соединение."))
             return
         latest = info.get("version", "")
         if self._version_tuple(latest) <= self._version_tuple(APP_VERSION):
-            self.update_status.setText(self.tr_text(f"Установлена последняя версия · {APP_VERSION}"))
+            self.set_ui_text(self.update_status, f"Установлена последняя версия · {APP_VERSION}")
             if not silent:
                 QMessageBox.information(self, self.tr_text("Обновления"),
                                          self.tr_text(f"У вас уже последняя версия {APP_VERSION}."))
             return
-        self.update_status.setText(self.tr_text(f"Доступна версия {latest}"))
-        if self.settings.data.get("updates_skip_version") == latest:
+        self.set_ui_text(self.update_status, f"Доступна версия {latest}")
+        if silent and self.settings.data.get("updates_skip_version") == latest:
             return
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Information)
@@ -2120,6 +2161,8 @@ class MainWindow(FeatureControls, QMainWindow):
             self.download_and_install(info)
 
     def download_and_install(self, info):
+        if getattr(self, "installer_downloader", None) and self.installer_downloader.isRunning():
+            return
         asset = info.get("asset")
         if not asset:
             QDesktopServices.openUrl(QUrl(info.get("url") or GITHUB_RELEASES))
@@ -2138,7 +2181,10 @@ class MainWindow(FeatureControls, QMainWindow):
 
     def on_installer_downloaded(self, path, error):
         if self.update_progress:
-            self.update_progress.close()
+            self.update_progress.reset()
+            self.update_progress.hide()
+        if getattr(self, "_shutting_down", False) or error == "Отменено пользователем":
+            return
         if error or not path or not Path(path).is_file():
             QMessageBox.warning(self, self.tr_text("Обновление"),
                                  self.tr_text("Не удалось скачать установщик: ") +
@@ -2190,13 +2236,13 @@ class MainWindow(FeatureControls, QMainWindow):
             notes.append(self.tr_text("Пределы загружаются автоматически при получении модели самолёта из игры."))
         self.limit_note.setText(" ".join(notes))
         if not self.db_updater or not self.db_updater.isRunning():
-            self.database_note.setText(self.tr_text(f"База {self.database.version} · {len(self.database.models)} моделей · {self.database_status}"))
+            self.set_ui_text(self.database_note, f"База {self.database.version} · {len(self.database.models)} моделей · {self.database_status}")
 
     def check_database_update(self):
         if self.db_updater and self.db_updater.isRunning():
             return
         self.database_update_button.setEnabled(False)
-        self.database_note.setText(self.tr_text(f"База {self.database.version} · проверка обновления…"))
+        self.set_ui_text(self.database_note, f"База {self.database.version} · проверка обновления…")
         self.db_updater = DatabaseUpdater(CONFIG_PATH.parent, self.database.version)
         self.db_updater.completed.connect(self.on_database_update)
         self.db_updater.start()
@@ -2212,7 +2258,7 @@ class MainWindow(FeatureControls, QMainWindow):
             self.demo_pulse()
         else:
             self.present_sample(*self.last_real_sample)
-        self.database_note.setText(self.tr_text(f"База {self.database.version} · {self.database_status}"))
+        self.set_ui_text(self.database_note, f"База {self.database.version} · {self.database_status}")
         self.database_note.setToolTip(error or "https://github.com/SpaceCapo/warthunder-byo-fm")
 
     def restore_background(self):
@@ -2286,7 +2332,8 @@ class MainWindow(FeatureControls, QMainWindow):
 
     @staticmethod
     def group_caption(group):
-        return " / ".join(HUD_LABELS.get(m, metric_label_for_ui(m)) for m in group["metrics"])
+        return (" / ".join(HUD_LABELS.get(m, metric_label_for_ui(m)) for m in group["metrics"])
+                or ("Empty group" if is_english_ui() else "Пустая группа"))
 
     def build_tray(self):
         pixmap = QPixmap(64, 64)
@@ -2349,13 +2396,16 @@ class MainWindow(FeatureControls, QMainWindow):
         self.loading_inspector = True
         self.group_metrics.clear()
         if group:
-            self.inspector_note.setText(self.tr_text("Изменения сразу применяются к HUD и сохраняются."))
-            self.title_edit.setText(group.get("title", ""))
+            self.set_ui_text(self.inspector_note, "Изменения сразу применяются к HUD и сохраняются.")
+            self.set_ui_text(self.title_edit, group.get("title", ""))
             self.style_box.setCurrentIndex(0 if group.get("style") == "text" else 1)
             self.labels_check.setChecked(bool(group.get("labels", True)))
             self.title_check.setChecked(bool(group.get("title_visible", False)))
             self.size_slider.setValue(int(group.get("size", 20)))
-            self.font_box.setCurrentText(group.get("font_family", "Consolas"))
+            family = group.get("font_family", "Consolas")
+            if self.font_box.findText(family) < 0:
+                self.font_box.addItem(family)
+            self.font_box.setCurrentText(family)
             self.spacing_spin.setValue(group.get("spacing", 1))
             self.compact_check.setChecked(group.get("compact_labels", True))
             self.bold_check.setChecked(group.get("bold", True))
@@ -2367,7 +2417,7 @@ class MainWindow(FeatureControls, QMainWindow):
             for metric_id in group.get("metrics", []):
                 self.group_metrics.addItem(metric_label_for_ui(metric_id))
         else:
-            self.inspector_note.setText(self.tr_text("Выберите блок на макете, чтобы изменить его вид."))
+            self.set_ui_text(self.inspector_note, "Выберите блок на макете, чтобы изменить его вид.")
             self.title_edit.clear()
         self.loading_inspector = False
 
@@ -2377,7 +2427,10 @@ class MainWindow(FeatureControls, QMainWindow):
         group = self.selected_group()
         if not group:
             return
-        group.update(title=self.title_edit.text().strip() or "БЛОК",
+        title = group.get("title", "")
+        if self.title_edit.text() != self.tr_text(title):
+            title = self.title_edit.text().strip() or "БЛОК"
+        group.update(title=title,
                      style=self.style_box.currentData(), labels=self.labels_check.isChecked(),
                      title_visible=self.title_check.isChecked(), size=self.size_slider.value(),
                      font_family=self.font_box.currentText(),
@@ -2535,16 +2588,16 @@ class MainWindow(FeatureControls, QMainWindow):
             if available != self.available:
                 self.available = available
                 self.refresh_palette()
-            self.status.setText(self.tr_text("ТЕСТ · ПРИМЕР ДАННЫХ" if mode == "demo" else "В БОЮ  ·  LIVE"))
+            self.set_ui_text(self.status, "ТЕСТ · ПРИМЕР ДАННЫХ" if mode == "demo" else "В БОЮ  ·  LIVE")
             self.status.setProperty("offline", False)
-            self.plane_label.setText(self.database.display_name(aircraft) if aircraft != "default" else self.tr_text("Самолёт не определён"))
+            self.set_ui_text(self.plane_label, self.database.display_name(aircraft) if aircraft != "default" else "Самолёт не определён")
         else:
             if self.available is not None:
                 self.available = None
                 self.refresh_palette()
-            self.status.setText(self.tr_text("ОЖИДАНИЕ БОЯ" if mode == "waiting" else "ИГРА НЕ НАЙДЕНА"))
+            self.set_ui_text(self.status, "ОЖИДАНИЕ БОЯ" if mode == "waiting" else "ИГРА НЕ НАЙДЕНА")
             self.status.setProperty("offline", True)
-            self.plane_label.setText(self.tr_text("Подключение к 127.0.0.1:8111 автоматически"))
+            self.set_ui_text(self.plane_label, "Подключение к 127.0.0.1:8111 автоматически")
         self.status.style().unpolish(self.status)
         self.status.style().polish(self.status)
         self.canvas.set_sample(self.sample, self.current_limits())
@@ -2645,17 +2698,25 @@ class MainWindow(FeatureControls, QMainWindow):
         QApplication.instance().quit()
 
     def stop_workers(self):
+        self._shutting_down = True
         self.stop_feature_timers()
         self.telemetry.stop()
-        if self.db_updater:
-            self.db_updater.wait(20000)
+        downloader = getattr(self, "installer_downloader", None)
+        if downloader:
+            downloader.cancel()
+        # Network calls have bounded timeouts; never destroy a running QThread.
+        for worker in (self.db_updater, getattr(self, "update_checker", None), downloader):
+            if worker and worker.isRunning():
+                worker.requestInterruption()
+                worker.wait()
 
 
 def main():
     app = QApplication([])
     app.setApplicationName("WT Flight")
-    app.setApplicationVersion("1.0.0")
-    app.setWindowIcon(QIcon(str(Path(__file__).parent / "data" / "wt-flight.ico")))
+    app.setApplicationVersion(APP_VERSION)
+    from wtflight.paths import RESOURCE_DIR
+    app.setWindowIcon(QIcon(str(RESOURCE_DIR / "wt-flight.ico")))
     app.setStyleSheet(STYLE)
     app.setQuitOnLastWindowClosed(False)
     window = MainWindow()

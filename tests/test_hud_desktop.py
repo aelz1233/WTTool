@@ -3,23 +3,23 @@
 Run with: .venv/Scripts/python.exe -m unittest test_hud_desktop -v
 """
 
-import ctypes
 import copy
+import ctypes
 import json
 import os
-from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch, Mock
+from pathlib import Path
+from unittest.mock import Mock, patch
 
-from PySide6.QtCore import QPoint, QPointF, Qt, QSize, QEvent
-from PySide6.QtGui import QKeySequence, QImage, QColor, QWheelEvent, QFontInfo, QPainter, QMouseEvent
+from PySide6.QtCore import QEvent, QPoint, QPointF, QSize, Qt
+from PySide6.QtGui import QColor, QFontInfo, QImage, QKeySequence, QMouseEvent, QPainter, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from wtflight.ui import main_window as wt_qt
 from wtflight.ui import feature_controls as wt_feature_ui
+from wtflight.ui import main_window as wt_qt
 from wtflight.win32.hotkey import GlobalHotkey
 
 
@@ -73,6 +73,88 @@ class DesktopTests(unittest.TestCase):
         w.toggle_quick_settings()
         self.assertFalse(w.quick_settings.isVisible())
         self.assertFalse(w.isVisible())
+
+    def test_language_switch_preserves_profiles_and_translates_quick_tabs(self):
+        w = self.window
+        w.settings.data['saved_layouts'] = {'Мой конфиг': copy.deepcopy(w.groups())}
+        w.refresh_presets()
+        w.select_preset(('saved', 'Мой конфиг'))
+        before = copy.deepcopy(w.groups())
+        for language in ('en', 'ru', 'en'):
+            w.set_language(language)
+            self.assertEqual(w.groups(), before)
+            self.assertEqual(tuple(w.preset_box.currentData()), ('saved', 'Мой конфиг'))
+            self.assertEqual(w.preset_box.currentText(), 'Мой конфиг')
+            self.assertEqual(w.preset_box.itemText(0), w.tr_text('Стандарт · воздушный бой'))
+            for tabs in w.quick_settings.findChildren(wt_qt.QTabWidget):
+                for index in range(tabs.count()):
+                    source = tabs.tabBar().tabData(index)
+                    self.assertEqual(tabs.tabText(index), w.tr_text(source))
+
+    def test_custom_font_survives_selection_and_unrelated_edits(self):
+        w = self.window
+        group = w.groups()[0]
+        group['font_family'] = 'Arial'
+        w.select_group(group['id'])
+        w.size_slider.setValue(23)
+        self.assertEqual(group['font_family'], 'Arial')
+        w.quick_settings.sync()
+        w.quick_settings.size_spin.setValue(24)
+        self.assertEqual(group['font_family'], 'Arial')
+
+    def test_runtime_status_retranslates_without_resetting_state(self):
+        w = self.window
+        w.present_sample('live', {'valid': True, 'IAS, km/h': 200}, {})
+        w.set_ui_text(w.update_status, 'Доступна версия 99.0.0')
+        for language in ('en', 'ru', 'en'):
+            w.set_language(language)
+            self.assertEqual(w.status.text(), w.tr_text('В БОЮ  ·  LIVE'))
+            self.assertEqual(w.plane_label.text(), w.tr_text('Самолёт не определён'))
+            self.assertEqual(w.update_status.text(), w.tr_text('Доступна версия 99.0.0'))
+
+    def test_helicopter_selection_survives_telemetry_refresh(self):
+        w = self.window
+        w.present_sample('live', {'valid': True, 'IAS, km/h': 150, 'RPM 1': 1000}, {})
+        w.helicopter_values.setCurrentRow(1)
+        metric = w.helicopter_values.currentItem().data(Qt.UserRole)
+        w.present_sample('live', {'valid': True, 'IAS, km/h': 160, 'RPM 1': 1100}, {})
+        self.assertEqual(w.helicopter_values.currentItem().data(Qt.UserRole), metric)
+
+    def test_disabled_and_custom_fuel_thresholds_match_hud(self):
+        group = wt_qt.new_group('fuel_time')
+        view = wt_qt.GroupView(group, False)
+        try:
+            for seconds, expected in ((200, 'normal'), (180, 'caution'), (120, 'critical')):
+                state = {'valid': True, 'fuel_seconds': seconds, '_fuel_minutes': 3,
+                         '_fuel_critical_seconds': 120}
+                view.set_sample(('live', state, {}), {})
+                self.assertEqual(view.lines()[0][2], expected)
+            state['_warning_categories'] = {'fuel': False}
+            view.set_sample(('live', state, {}), {})
+            self.assertEqual(view.lines()[0][2], 'normal')
+        finally:
+            view.deleteLater()
+
+    def test_manual_update_check_ignores_reminder_suppression(self):
+        w = self.window
+        w.settings.data['updates_skip_version'] = '99.0.0'
+        with patch.object(wt_qt.QMessageBox, 'exec', return_value=0) as dialog:
+            w.on_update_checked({'version': '99.0.0'}, '', silent=True)
+            dialog.assert_not_called()
+            w.on_update_checked({'version': '99.0.0'}, '', silent=False)
+            dialog.assert_called_once()
+
+    def test_shutdown_cancels_download_and_joins_all_workers(self):
+        w = self.window
+        workers = [Mock(), Mock(), Mock()]
+        w.db_updater, w.update_checker, w.installer_downloader = workers
+        for worker in workers:
+            worker.isRunning.return_value = True
+        w.stop_workers()
+        workers[2].cancel.assert_called_once()
+        for worker in workers:
+            worker.wait.assert_called_once()
+        w.db_updater = w.update_checker = w.installer_downloader = None
 
     def test_layout_undo_redo_delete_and_preset(self):
         w = self.window

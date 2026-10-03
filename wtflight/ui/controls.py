@@ -1,5 +1,5 @@
 """Spin controls with explicit, dependable step buttons."""
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QAbstractSpinBox, QHBoxLayout, QPushButton, QSpinBox, QWidget
 
 

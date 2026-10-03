@@ -1,8 +1,8 @@
 """Render actual UI theme comparisons with sample telemetry and temporary settings."""
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
-from PySide6.QtCore import QRect, Qt
+from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication

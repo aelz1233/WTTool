@@ -1,7 +1,7 @@
 """Identify the foreground game by executable name only."""
 import ctypes
-from ctypes import wintypes
 import sys
+from ctypes import wintypes
 
 
 def game_is_foreground():

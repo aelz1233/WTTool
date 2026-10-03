@@ -1,8 +1,8 @@
 """Configurable Windows hotkeys, without polling or keyboard hooks."""
 
 import ctypes
-import sys
 import itertools
+import sys
 from ctypes import wintypes
 
 from PySide6.QtCore import QAbstractNativeEventFilter, Qt, QTimer

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import math
 import re
-from wtflight.paths import APP_DIR, CONFIG_PATH
+
+from wtflight.paths import CONFIG_PATH as CONFIG_PATH
 
 # id: (section, label, source, API key, format)
 METRICS = {
@@ -133,8 +134,9 @@ def engine_metric_ids(kind, state):
         return []
     template = ENGINE_FIELDS[kind][0]
     pattern = "^" + re.escape(template).replace(r"\{n\}", r"([1-9][0-9]?)") + "$"
-    return [f"engine:{kind}:{int(match.group(1))}" for key in state
-            if (match := re.fullmatch(pattern, key)) and number(state.get(key)) is not None]
+    indices = sorted(int(match.group(1)) for key in state
+                     if (match := re.fullmatch(pattern, key)) and number(state.get(key)) is not None)
+    return [f"engine:{kind}:{index}" for index in indices]
 
 
 def expand_engine_metric(metric_id, state):
@@ -266,4 +268,3 @@ def evaluate(ias, load, positive_limit, negative_limit, speed_limit, caution_rat
     if all(v is None for v in (positive_limit, negative_limit, speed_limit)):
         return "unset", "Пределы не настроены"
     return "normal", "В пределах заданных значений"
-

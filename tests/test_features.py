@@ -1,7 +1,14 @@
 import unittest
 
-from wtflight.core._features import (LayoutHistory, FuelEstimator, add_margins, alert_levels,
-                         AlertCooldown, validate_profile, metric_risk)
+from wtflight.core._features import (
+    AlertCooldown,
+    FuelEstimator,
+    LayoutHistory,
+    add_margins,
+    alert_levels,
+    metric_risk,
+    validate_profile,
+)
 from wtflight.core.metrics import available_metrics, engine_metric_ids, expand_engine_metric, metric_label, metric_value
 from wtflight.ui.main_window import warning_for
 
@@ -88,6 +95,17 @@ class FeatureTests(unittest.TestCase):
         profile = {"format": "wt-flight-profile", "version": 1,
                    "groups": [{"metrics": ["engine:power:2"]}]}
         self.assertEqual(validate_profile(profile)[0]["metrics"], ["engine:power:2"])
+
+    def test_empty_group_roundtrip_and_numeric_engine_order(self):
+        profile = {"format": "wt-flight-profile", "version": 1, "groups": [{"metrics": []}]}
+        self.assertEqual(validate_profile(profile)[0]['metrics'], [])
+        state = {"RPM 4": 400, "RPM 2": 200, "RPM 1": 100, "RPM 3": 300}
+        self.assertEqual(engine_metric_ids('rpm', state), [f'engine:rpm:{i}' for i in range(1, 5)])
+
+    def test_critical_fuel_above_early_threshold_still_warns(self):
+        state = {'fuel_seconds': 100, '_fuel_minutes': 1, '_fuel_critical_seconds': 120}
+        self.assertEqual(warning_for(('live', state, {}), {})[0], 'critical')
+        self.assertEqual(alert_levels(state, {}, fuel_minutes=1, fuel_critical_seconds=120)['fuel'], 'critical')
 
     def test_stall_warning_uses_configured_aoa_and_prioritizes_audio(self):
         state = {"AoA, deg": 13.5, "_aoa_limit": 15}

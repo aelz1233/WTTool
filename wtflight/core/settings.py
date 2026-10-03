@@ -8,10 +8,14 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
+from wtflight.core._features import validate_profile
+from wtflight.core.metrics import number
 from wtflight.paths import CONFIG_PATH
 
 
@@ -38,9 +42,13 @@ class Settings:
         }
         try:
             saved = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except OSError:
+            return
+        except ValueError:
+            self._backup_invalid()
             return
         if not isinstance(saved, dict):
+            self._backup_invalid()
             return
         if isinstance(saved.get("profiles"), dict):
             self.data.update(saved)
@@ -68,7 +76,7 @@ class Settings:
                 for group in groups:
                     if isinstance(group, dict):
                         group.pop("opacity", None)
-        if saved.get("version", 0) < 4:
+        if (number(saved.get("version")) or 0) < 4:
             for groups in self.data.get("profiles", {}).values():
                 if isinstance(groups, list):
                     for group in groups:
@@ -76,6 +84,69 @@ class Settings:
                             group.update(font_family="Consolas", bold=True, shadow=True,
                                          compact_labels=True, spacing=1)
         self.data["version"] = 4
+        self._validate()
+
+    def _backup_invalid(self):
+        # Keep the exact original before the UI writes recovered settings.
+        if self.path.is_file():
+            shutil.copy2(self.path, self.path.with_name(f"settings.recovery-{uuid.uuid4().hex[:8]}.json"))
+
+    def _validate(self):
+        original = copy.deepcopy(self.data)
+        for section in ("profiles", "saved_layouts", "limits", "flight", "hotkeys", "preview"):
+            if not isinstance(self.data.get(section, {}), dict):
+                self.data[section] = {}
+        for section in ("profiles", "saved_layouts"):
+            for name, groups in list(self.data.get(section, {}).items()):
+                try:
+                    clean = validate_profile({"format": "wt-flight-profile", "version": 1, "groups": groups})
+                except (ValueError, TypeError, AttributeError):
+                    del self.data[section][name]
+                    continue
+                used = set()
+                for group, source in zip(clean, groups, strict=True):
+                    identity = source.get("id")
+                    if isinstance(identity, str) and identity and identity not in used:
+                        group["id"] = identity
+                    used.add(group["id"])
+                self.data[section][name] = clean
+        self.data["profiles"].setdefault("default", self._default_profile())
+        self.data["limits"] = {name: {key: number(value) for key, value in limits.items()
+                                      if number(value) is not None} | ({"_auto": limits["_auto"]}
+                                      if isinstance(limits.get("_auto"), bool) else {})
+                               for name, limits in self.data["limits"].items() if isinstance(limits, dict)}
+        flight = self.data.setdefault("flight", {})
+        for key in ("warning_categories", "sound_categories", "sound_files"):
+            if not isinstance(flight.get(key, {}), dict):
+                flight[key] = {}
+        if "sound_files" in flight:
+            flight["sound_files"] = {key: value for key, value in flight["sound_files"].items()
+                                     if isinstance(value, str)}
+        for key, default, low, high in (("telemetry_hz", 10, 5, 15), ("aoa_limit", 15, 5, 45),
+                ("warning_ratio", 90, 75, 99), ("fuel_critical_seconds", 60, 15, 300),
+                ("volume", 65, 0, 100), ("repeat_seconds", 8, 2, 60), ("fuel_minutes", 3, 1, 20)):
+            if key in flight:
+                value = number(flight[key])
+                flight[key] = int(value) if value is not None and low <= value <= high else default
+        if flight.get("telemetry_hz", 10) not in (5, 10, 15):
+            flight["telemetry_hz"] = 10
+        for key in ("preview_background", "screen_name", "menu_hotkey"):
+            if key in self.data and not isinstance(self.data[key], str):
+                self.data.pop(key)
+        for key, value in list(self.data.get("hotkeys", {}).items()):
+            if not isinstance(value, str):
+                del self.data["hotkeys"][key]
+        if "database_checked_at" in self.data:
+            self.data["database_checked_at"] = number(self.data["database_checked_at"]) or 0
+        if "theme" in self.data and self.data["theme"] not in ("graphite", "cockpit", "arctic", "dark", "pink"):
+            self.data["theme"] = "graphite"
+        preview = self.data.get("preview", {})
+        if "dimming" in preview:
+            preview["dimming"] = max(0, min(100, int(number(preview["dimming"]) or 0)))
+        if "image" in preview and not isinstance(preview["image"], str):
+            preview.pop("image")
+        if self.data != original:
+            self._backup_invalid()
 
     def groups(self, aircraft: str) -> list[dict[str, Any]]:
         profiles = self.data.setdefault("profiles", {})

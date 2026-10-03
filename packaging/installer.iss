@@ -7,7 +7,7 @@ AppId={{D7F5651E-6A74-47CD-A931-A3C136469A83}
 AppName=WT Flight
 AppVersion={#AppVersion}
 AppPublisher=WT Flight
-DefaultDirName=D:\WT Flight
+DefaultDirName={code:DefaultInstallDir}
 DefaultGroupName=WT Flight
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
@@ -30,7 +30,7 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Создать ярлык на рабочем столе"; GroupDescription: "Ярлыки:"
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Dirs]
 Name: "{userappdata}\WTFlightAssistant"
@@ -45,4 +45,13 @@ Name: "{userdesktop}\WT Flight"; Filename: "{app}\WT Flight.exe"; WorkingDir: "{
 Name: "{userprograms}\WT Flight"; Filename: "{app}\WT Flight.exe"; WorkingDir: "{app}"
 
 [Run]
-Filename: "{app}\WT Flight.exe"; Description: "Запустить WT Flight"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\WT Flight.exe"; Description: "{cm:LaunchProgram,WT Flight}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+function DefaultInstallDir(Param: String): String;
+begin
+  if DirExists('D:\') then
+    Result := 'D:\WT Flight'
+  else
+    Result := ExpandConstant('{localappdata}\Programs\WT Flight');
+end;

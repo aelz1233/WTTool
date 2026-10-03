@@ -1,6 +1,6 @@
 """Centralized application paths."""
-from pathlib import Path
 import os
+from pathlib import Path
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 RESOURCE_DIR = PACKAGE_DIR / "resources"

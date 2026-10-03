@@ -9,8 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFormLayout, QHBoxLayout, QScrollArea, QVBoxLayout, QWidget, QPushButton, QFrame
+from PySide6.QtWidgets import QFormLayout, QFrame, QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
 if TYPE_CHECKING:
     from wtflight.ui.main_window import MainWindow
